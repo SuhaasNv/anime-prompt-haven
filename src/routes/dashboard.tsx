@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { useState } from "react";
 import { Navbar } from "@/components/Navbar";
 import { ContributeModal } from "@/components/ContributeModal";
+import { PromptCard } from "@/components/PromptCard";
 import { CURRENT_USER_QUERY_KEY, getCurrentUser } from "@/lib/api/auth.functions";
 import { createCollection, listCollections } from "@/lib/api/collections.functions";
 import { PROMPTS } from "@/lib/mock-data";
@@ -42,13 +43,23 @@ const colorMap = {
   purple: { bg: "bg-holo-purple", text: "text-holo-purple", shadow: "shadow-pop-purple" },
 } as const;
 
-const sidebarLinks = [
-  { label: "Collections", icon: "📚", to: "/dashboard" as const, active: true },
-  { label: "All Saved", icon: "⭐", to: "/dashboard" as const, count: PROMPTS.length },
-  { label: "Purchased", icon: "💎", to: "/dashboard" as const, count: 4 },
-  { label: "My Studio", icon: "🎨", to: "/profile" as const },
-  { label: "Settings", icon: "⚙️", to: "/profile" as const },
-];
+const PURCHASED_PROMPTS = PROMPTS.filter((p) => p.price > 0);
+
+// Local view-tabs switch which section of the binder is shown below — they
+// stay on /dashboard rather than navigating, so each needs an explicit
+// onClick + active-state instead of relying on router link matching.
+const DASHBOARD_VIEWS = [
+  { id: "collections", label: "Collections", icon: "📚" },
+  { id: "saved", label: "All Saved", icon: "⭐", count: PROMPTS.length },
+  { id: "purchased", label: "Purchased", icon: "💎", count: PURCHASED_PROMPTS.length },
+] as const;
+
+type DashboardView = (typeof DASHBOARD_VIEWS)[number]["id"];
+
+const profileLinks = [
+  { label: "My Studio", icon: "🎨" },
+  { label: "Settings", icon: "⚙️" },
+] as const;
 
 function NewCollectionForm({ onClose }: { onClose: () => void }) {
   const router = useRouter();
@@ -120,6 +131,7 @@ function Dashboard() {
   const { user, collections } = Route.useLoaderData();
   const [creating, setCreating] = useState(false);
   const [contributing, setContributing] = useState(false);
+  const [activeView, setActiveView] = useState<DashboardView>("collections");
 
   return (
     <div className="min-h-screen">
@@ -140,21 +152,40 @@ function Dashboard() {
                 </div>
               </div>
               <nav className="mt-4 space-y-1">
-                {sidebarLinks.map((l, i) => (
+                {DASHBOARD_VIEWS.map((v) => {
+                  const active = activeView === v.id;
+                  return (
+                    <button
+                      key={v.id}
+                      type="button"
+                      aria-current={active ? "true" : undefined}
+                      onClick={() => setActiveView(v.id)}
+                      className={`w-full flex items-center justify-between px-3 py-2 font-bold uppercase text-xs tracking-wider transition-colors ${
+                        active ? "bg-magenta text-white" : "text-white/80 hover:bg-white/5 hover:text-magenta"
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <span className="text-base">{v.icon}</span>
+                        {v.label}
+                      </span>
+                      {"count" in v && (
+                        <span className="text-[10px] font-mono opacity-70">{v.count}</span>
+                      )}
+                    </button>
+                  );
+                })}
+
+                <div className="!mt-3 !mb-1 border-t border-white/10" />
+
+                {profileLinks.map((l) => (
                   <Link
-                    key={i}
-                    to={l.to}
-                    className={`flex items-center justify-between px-3 py-2 font-bold uppercase text-xs tracking-wider transition-colors ${
-                      l.active ? "bg-magenta text-white" : "text-white/80 hover:bg-white/5 hover:text-magenta"
-                    }`}
+                    key={l.label}
+                    to="/profile"
+                    className="flex items-center gap-2 px-3 py-2 font-bold uppercase text-xs tracking-wider text-white/80 hover:bg-white/5 hover:text-magenta transition-colors"
+                    activeProps={{ className: "!bg-magenta !text-white" }}
                   >
-                    <span className="flex items-center gap-2">
-                      <span className="text-base">{l.icon}</span>
-                      {l.label}
-                    </span>
-                    {l.count !== undefined && (
-                      <span className="text-[10px] font-mono opacity-70">{l.count}</span>
-                    )}
+                    <span className="text-base">{l.icon}</span>
+                    {l.label}
                   </Link>
                 ))}
               </nav>
@@ -200,6 +231,8 @@ function Dashboard() {
               ))}
             </div>
 
+            {activeView === "collections" && (
+              <>
             {/* Collections grid */}
             <h2 className="font-display text-2xl uppercase mb-5 border-b-4 border-ink pb-2">Your Collections</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -283,6 +316,37 @@ function Dashboard() {
                 </Link>
               ))}
             </div>
+              </>
+            )}
+
+            {activeView === "saved" && (
+              <>
+                <h2 className="font-display text-2xl uppercase mb-5 border-b-4 border-ink pb-2">All Saved Prompts</h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
+                  {PROMPTS.map((p) => (
+                    <PromptCard key={p.id} prompt={p} />
+                  ))}
+                </div>
+              </>
+            )}
+
+            {activeView === "purchased" && (
+              <>
+                <h2 className="font-display text-2xl uppercase mb-5 border-b-4 border-ink pb-2">Purchased Prompts</h2>
+                {PURCHASED_PROMPTS.length === 0 ? (
+                  <div className="py-16 text-center border-2 border-dashed border-ink">
+                    <p className="font-display text-2xl uppercase text-ink/40">Nothing here yet</p>
+                    <p className="text-sm text-ink/60 mt-2">Prompts you buy will show up in this tab.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
+                    {PURCHASED_PROMPTS.map((p) => (
+                      <PromptCard key={p.id} prompt={p} />
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
           </section>
         </div>
       </main>
