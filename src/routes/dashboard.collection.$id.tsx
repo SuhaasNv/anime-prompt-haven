@@ -37,11 +37,11 @@ const colorMap = {
 } as const;
 
 function CollectionDetail() {
-  const { collection } = Route.useLoaderData();
+  const { collection } = Route.useLoaderData() as { collection: NonNullable<ReturnType<typeof import("@/lib/mock-data").getCollection>> };
   const prompts = collection.promptIds
-    .map((id) => PROMPTS.find((p) => p.id === id))
-    .filter((p): p is NonNullable<typeof p> => Boolean(p));
-  const colors = colorMap[collection.color];
+    .map((id: string) => PROMPTS.find((p) => p.id === id))
+    .filter((p): p is (typeof PROMPTS)[number] => Boolean(p));
+  const colors = colorMap[collection.color as keyof typeof colorMap];
 
   return (
     <div className="min-h-screen">
