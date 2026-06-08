@@ -1,11 +1,19 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
-import { motion } from "framer-motion";
+import { useEffect, useMemo, useState } from "react";
+import { motion, useReducedMotion } from "framer-motion";
 import { Navbar } from "@/components/Navbar";
 import { PromptCard } from "@/components/PromptCard";
+import { listListings } from "@/lib/api/listings.functions";
 import { CATEGORIES, COLLECTIONS, PROMPTS, TAGS } from "@/lib/mock-data";
+import { MASCOTS, type MascotKey } from "@/lib/mascots";
+
+const MASCOT_KEYS = Object.keys(MASCOTS) as MascotKey[];
 
 export const Route = createFileRoute("/")({
+  loader: async () => {
+    const listings = await listListings();
+    return { listings };
+  },
   head: () => ({
     meta: [
       { title: "PromptStar — Anime AI Prompt Marketplace" },
@@ -16,20 +24,31 @@ export const Route = createFileRoute("/")({
 });
 
 function MarketPage() {
+  const { listings } = Route.useLoaderData();
+  const allPrompts = useMemo(() => [...listings, ...PROMPTS], [listings]);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
   const [activeTag, setActiveTag] = useState<string | null>(null);
+  const reduceMotion = useReducedMotion();
+
+  // Picked client-side (post-mount) so the server-rendered markup never has to
+  // guess — guarantees the choice matches what the visitor actually sees and
+  // sidesteps any hydration mismatch from randomizing during render.
+  const [heroMascot, setHeroMascot] = useState<MascotKey | null>(null);
+  useEffect(() => {
+    setHeroMascot(MASCOT_KEYS[Math.floor(Math.random() * MASCOT_KEYS.length)]);
+  }, []);
 
   const filtered = useMemo(
     () =>
-      PROMPTS.filter((p) => {
+      allPrompts.filter((p) => {
         if (category !== "All" && p.category !== category) return false;
         if (activeTag && !p.tags.includes(activeTag)) return false;
         if (query && !`${p.title} ${p.description} ${p.creator}`.toLowerCase().includes(query.toLowerCase()))
           return false;
         return true;
       }),
-    [query, category, activeTag],
+    [allPrompts, query, category, activeTag],
   );
 
   return (
@@ -38,7 +57,39 @@ function MarketPage() {
 
       <main className="relative z-10 px-6 md:px-12 py-12">
         {/* Hero */}
-        <section className="mb-16">
+        <section className="relative mb-16">
+          {heroMascot && (
+            <motion.div
+              aria-hidden="true"
+              className="hidden lg:block absolute right-20 xl:right-32 top-24 xl:top-28 pointer-events-none select-none"
+              initial={{ opacity: 0, scale: 0.85 }}
+              animate={
+                reduceMotion
+                  ? { opacity: 1, scale: 1 }
+                  : { opacity: 1, scale: 1, y: [0, -16, 0], rotate: [0, -3, 3, 0] }
+              }
+              transition={
+                reduceMotion
+                  ? { duration: 0.5, ease: [0.22, 1, 0.36, 1] }
+                  : {
+                      opacity: { duration: 0.6 },
+                      scale: { duration: 0.6 },
+                      y: { duration: 3.6, repeat: Infinity, ease: "easeInOut" },
+                      rotate: { duration: 6, repeat: Infinity, ease: "easeInOut" },
+                    }
+              }
+            >
+              <div className="absolute inset-0 bg-magenta/30 blur-3xl rounded-full" />
+              <img
+                src={MASCOTS[heroMascot].image}
+                alt=""
+                width={420}
+                height={420}
+                className="relative z-10 size-[22rem] xl:size-[26rem] object-contain drop-shadow-[8px_8px_0_rgba(0,0,0,1)]"
+              />
+            </motion.div>
+          )}
+
           <div className="relative">
             <motion.h1
               initial={{ opacity: 0, y: 30 }}

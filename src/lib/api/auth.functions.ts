@@ -8,6 +8,11 @@ import { getDb } from "../db.server";
 const PASSWORD_MIN_LENGTH = 8;
 const MASCOT_VALUES = ["nova", "comet"] as const;
 
+// Shared so the navbar's cached session lookup can be kept in sync (instead
+// of refetched from scratch) right when sign-in/sign-out actually changes it —
+// that's what avoids the signed-out flash while navigating between pages.
+export const CURRENT_USER_QUERY_KEY = ["current-user"] as const;
+
 export const signUp = createServerFn({ method: "POST" })
   .validator(
     z.object({

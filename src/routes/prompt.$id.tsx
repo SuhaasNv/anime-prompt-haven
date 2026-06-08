@@ -3,13 +3,14 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { Navbar } from "@/components/Navbar";
 import { SaveToCollectionModal } from "@/components/SaveToCollectionModal";
-import { getPrompt, PROMPTS } from "@/lib/mock-data";
+import { getListing } from "@/lib/api/listings.functions";
+import { getPrompt, PROMPTS, type Prompt } from "@/lib/mock-data";
 
 export const Route = createFileRoute("/prompt/$id")({
-  loader: ({ params }) => {
-    const prompt = getPrompt(params.id);
+  loader: async ({ params }) => {
+    const prompt = getPrompt(params.id) ?? (await getListing({ data: { id: params.id } }));
     if (!prompt) throw notFound();
-    return { prompt: prompt! };
+    return { prompt };
   },
   head: ({ loaderData }) =>
     loaderData
@@ -37,7 +38,7 @@ export const Route = createFileRoute("/prompt/$id")({
 });
 
 function PromptDetail() {
-  const { prompt } = Route.useLoaderData() as { prompt: NonNullable<ReturnType<typeof import("@/lib/mock-data").getPrompt>> };
+  const { prompt } = Route.useLoaderData() as { prompt: Prompt };
   const [modalOpen, setModalOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [liked, setLiked] = useState(false);

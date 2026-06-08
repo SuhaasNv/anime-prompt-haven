@@ -1,7 +1,8 @@
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
-import { signIn, signUp } from "@/lib/api/auth.functions";
+import { useQueryClient } from "@tanstack/react-query";
+import { CURRENT_USER_QUERY_KEY, signIn, signUp } from "@/lib/api/auth.functions";
 import { MASCOTS, type MascotKey } from "@/lib/mascots";
 
 // Nova-chan only ships one piece of art, so each "mood" restyles that single
@@ -69,6 +70,7 @@ type Mode = "signin" | "signup";
 
 function AuthPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const reduceMotion = useReducedMotion();
   const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("");
@@ -100,6 +102,10 @@ function AuthPage() {
       } else {
         await signIn({ data: { email, password, rememberMe } });
       }
+      // Refresh the navbar's cached session before navigating, so the
+      // avatar is already correct on the very first render of /dashboard
+      // instead of showing "Sign in" for a frame while it refetches.
+      await queryClient.invalidateQueries({ queryKey: CURRENT_USER_QUERY_KEY });
       await router.invalidate();
       await router.navigate({ to: "/dashboard" });
     } catch (err) {
@@ -176,7 +182,12 @@ function AuthPage() {
               }
               transition={{
                 y: { duration: 3, repeat: Infinity, ease: "easeInOut" },
-                rotate: { type: "spring", stiffness: 90, damping: 12 },
+                // Springs only support two keyframes — the focused "wobble" is
+                // a three-point [-3, 3, -3] sequence, so it needs a tween-based
+                // repeat instead (the single-value mood rotation keeps its spring).
+                rotate: focused
+                  ? { duration: 1.4, repeat: Infinity, ease: "easeInOut" }
+                  : { type: "spring", stiffness: 90, damping: 12 },
                 scaleX: { type: "spring", stiffness: 90, damping: 12 },
                 scaleY: { type: "spring", stiffness: 90, damping: 12 },
               }}

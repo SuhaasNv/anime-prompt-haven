@@ -2,13 +2,21 @@ import { createFileRoute, Link, redirect, useRouter } from "@tanstack/react-rout
 import { motion } from "framer-motion";
 import { useState } from "react";
 import { Navbar } from "@/components/Navbar";
-import { getCurrentUser } from "@/lib/api/auth.functions";
+import { ContributeModal } from "@/components/ContributeModal";
+import { CURRENT_USER_QUERY_KEY, getCurrentUser } from "@/lib/api/auth.functions";
 import { createCollection, listCollections } from "@/lib/api/collections.functions";
 import { PROMPTS } from "@/lib/mock-data";
 
 export const Route = createFileRoute("/dashboard")({
-  beforeLoad: async () => {
-    const user = await getCurrentUser();
+  beforeLoad: async ({ context }) => {
+    // Reuses the Navbar's cached session (same query key/fn) when it's still
+    // fresh, instead of firing a second `getCurrentUser` round-trip on every
+    // navigation here — that redundant request was the source of the lag.
+    const user = await context.queryClient.ensureQueryData({
+      queryKey: CURRENT_USER_QUERY_KEY,
+      queryFn: getCurrentUser,
+      staleTime: 60_000,
+    });
     if (!user) {
       throw redirect({ to: "/auth" });
     }
@@ -111,10 +119,12 @@ function NewCollectionForm({ onClose }: { onClose: () => void }) {
 function Dashboard() {
   const { user, collections } = Route.useLoaderData();
   const [creating, setCreating] = useState(false);
+  const [contributing, setContributing] = useState(false);
 
   return (
     <div className="min-h-screen">
       <Navbar />
+      <ContributeModal open={contributing} onClose={() => setContributing(false)} />
       <main className="relative z-10 px-6 md:px-12 py-10">
         <div className="grid grid-cols-12 gap-8">
           {/* Sidebar */}
@@ -160,12 +170,20 @@ function Dashboard() {
                 </h1>
                 <p className="mt-2 text-ink/70 font-medium">Your private vault of S-rank prompt drops.</p>
               </div>
-              <button
-                onClick={() => setCreating(true)}
-                className="bg-accent-orange text-white px-5 py-3 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all whitespace-nowrap"
-              >
-                + New Collection
-              </button>
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={() => setContributing(true)}
+                  className="bg-magenta text-white px-5 py-3 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all whitespace-nowrap"
+                >
+                  + Contribute
+                </button>
+                <button
+                  onClick={() => setCreating(true)}
+                  className="bg-accent-orange text-white px-5 py-3 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all whitespace-nowrap"
+                >
+                  + New Collection
+                </button>
+              </div>
             </div>
 
             {/* Stats */}

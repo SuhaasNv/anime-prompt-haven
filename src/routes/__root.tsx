@@ -7,11 +7,21 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { type ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { Mascot } from "@/components/Mascot";
 import { HoloBackground } from "@/components/HoloBackground";
+import { ACCENT_THEMES, ACCENT_THEME_STORAGE_KEY, applyAccentTheme, getStoredAccentTheme } from "@/lib/theme";
+
+// Runs as a blocking inline script before the page paints, so a saved accent
+// theme takes effect immediately on a hard refresh — without it, the React
+// effect in RootComponent only fires post-hydration, producing a visible
+// flash of the default magenta first. Built from the same constants `theme.ts`
+// uses (JSON-encoded, no user input) so the two can't drift out of sync.
+const THEME_BOOT_SCRIPT = `(function(){try{var v=localStorage.getItem(${JSON.stringify(
+  ACCENT_THEME_STORAGE_KEY,
+)});var t=${JSON.stringify(ACCENT_THEMES)};if(v&&t[v])document.documentElement.style.setProperty('--magenta',t[v].hex);}catch(e){}})();`;
 
 function NotFoundComponent() {
   return (
@@ -91,10 +101,14 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   errorComponent: ErrorComponent,
 });
 
+// suppressHydrationWarning on <html>: THEME_BOOT_SCRIPT sets a `style`
+// attribute on this element before hydration so the saved accent theme
+// paints immediately — React would otherwise flag that as a mismatch.
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
         <HeadContent />
       </head>
       <body>
@@ -107,6 +121,12 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+
+  // Re-apply the saved accent theme on every full page load — the CSS custom
+  // property lives only in the DOM, so SSR always starts from the default.
+  useEffect(() => {
+    applyAccentTheme(getStoredAccentTheme());
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>

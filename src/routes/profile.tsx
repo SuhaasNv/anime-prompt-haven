@@ -1,12 +1,21 @@
 import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Navbar } from "@/components/Navbar";
-import { getCurrentUser, setMascot } from "@/lib/api/auth.functions";
+import { CURRENT_USER_QUERY_KEY, getCurrentUser, setMascot } from "@/lib/api/auth.functions";
 import { MASCOTS, type MascotKey } from "@/lib/mascots";
+import { ACCENT_THEMES, applyAccentTheme, getStoredAccentTheme, persistAccentTheme, type AccentTheme } from "@/lib/theme";
+import { playTactileClick } from "@/lib/sound";
 
 export const Route = createFileRoute("/profile")({
-  beforeLoad: async () => {
-    const user = await getCurrentUser();
+  beforeLoad: async ({ context }) => {
+    // Reuses the Navbar's cached session (same query key/fn) when it's still
+    // fresh, instead of firing a second `getCurrentUser` round-trip on every
+    // navigation here — that redundant request was the source of the lag.
+    const user = await context.queryClient.ensureQueryData({
+      queryKey: CURRENT_USER_QUERY_KEY,
+      queryFn: getCurrentUser,
+      staleTime: 60_000,
+    });
     if (!user) {
       throw redirect({ to: "/auth" });
     }
@@ -22,23 +31,31 @@ export const Route = createFileRoute("/profile")({
   component: ProfilePage,
 });
 
-const themes = [
-  { name: "Magenta", color: "#d400ff" },
-  { name: "Orange", color: "#ff6600" },
-  { name: "Yellow", color: "#ffcc00" },
-  { name: "Purple", color: "#9d00ff" },
-];
-
 const animationLevels = ["Off", "Low", "High"] as const;
 
 function ProfilePage() {
   const router = useRouter();
   const { user } = Route.useLoaderData();
-  const [theme, setTheme] = useState("Magenta");
+  // Starts at the SSR-safe default; localStorage only exists client-side, so
+  // reading it during the initial render would mismatch the server-rendered
+  // markup and trigger a hydration warning. Sync it in after mount instead.
+  const [theme, setTheme] = useState<AccentTheme>("magenta");
+
+  useEffect(() => {
+    setTheme(getStoredAccentTheme());
+  }, []);
   const [animLevel, setAnimLevel] = useState<(typeof animationLevels)[number]>("High");
   const [fontSize, setFontSize] = useState(16);
   const [companion, setCompanion] = useState<MascotKey>(user.mascot);
   const [savingCompanion, setSavingCompanion] = useState(false);
+
+  const handlePickTheme = (key: AccentTheme) => {
+    if (key === theme) return;
+    playTactileClick();
+    setTheme(key);
+    applyAccentTheme(key);
+    persistAccentTheme(key);
+  };
 
   const handlePickCompanion = async (key: MascotKey) => {
     if (key === companion || savingCompanion) return;
@@ -101,19 +118,28 @@ function ProfilePage() {
 
             <Section title="Accent Theme">
               <div className="grid grid-cols-4 gap-3">
-                {themes.map((t) => (
-                  <button
-                    key={t.name}
-                    onClick={() => setTheme(t.name)}
-                    className={`p-3 border-2 border-ink font-bold uppercase text-xs transition-all ${
-                      theme === t.name ? "shadow-[4px_4px_0_0_#0a0a0c]" : "hover:translate-x-0.5"
-                    }`}
-                    style={{ background: t.color, color: t.color === "#ffcc00" ? "#0a0a0c" : "#fff" }}
-                  >
-                    {t.name}
-                  </button>
-                ))}
+                {(Object.keys(ACCENT_THEMES) as AccentTheme[]).map((key) => {
+                  const t = ACCENT_THEMES[key];
+                  const selected = theme === key;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => handlePickTheme(key)}
+                      aria-pressed={selected}
+                      className={`p-3 border-2 border-ink font-bold uppercase text-xs transition-all ${
+                        selected ? "shadow-[4px_4px_0_0_#0a0a0c] -translate-x-0.5 -translate-y-0.5" : "hover:translate-x-0.5"
+                      }`}
+                      style={{ background: t.hex, color: key === "yellow" ? "#0a0a0c" : "#fff" }}
+                    >
+                      {t.label}
+                    </button>
+                  );
+                })}
               </div>
+              <p className="text-[11px] text-ink/50 font-medium mt-3">
+                Sets PromptStar's lead colour site-wide — eases in smoothly, saved to this browser.
+              </p>
             </Section>
 
             <Section title="Companion">
