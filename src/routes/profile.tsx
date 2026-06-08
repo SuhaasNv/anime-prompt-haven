@@ -110,7 +110,7 @@ function ProfilePage() {
           <div className="md:col-span-2 space-y-6">
             <Section title="Bio">
               <textarea
-                defaultValue="Collecting hyperrealistic anime prompts. Mecha + magical girl supremacy."
+                defaultValue="Collecting prompts across every style — cyberpunk, concept art, anime, and beyond."
                 rows={3}
                 className="w-full bg-white border-2 border-ink p-3 font-medium focus:outline-none focus:ring-4 focus:ring-magenta/30"
               />

@@ -238,7 +238,7 @@ function AuthPage() {
                 className="font-display uppercase text-lg leading-tight"
               >
                 {mode === "signin"
-                  ? focused ? "Yes! Keep going, Senpai!" : "Welcome back, Senpai!"
+                  ? focused ? "Yes! Keep going, Star!" : "Welcome back, Star!"
                   : focused ? "Almost there — you got this!" : "Let's start your journey!"}
               </motion.p>
             </AnimatePresence>
@@ -266,7 +266,7 @@ function AuthPage() {
                   required
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="senpai_99"
+                  placeholder="nova_star_99"
                   className="w-full bg-white border-2 border-ink p-3 font-bold focus:outline-none focus:ring-4 focus:ring-magenta/30"
                 />
               </div>

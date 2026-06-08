@@ -16,8 +16,8 @@ export const Route = createFileRoute("/")({
   },
   head: () => ({
     meta: [
-      { title: "PromptStar — Anime AI Prompt Marketplace" },
-      { name: "description", content: "Discover hyperrealistic anime-style prompts for Midjourney, ChatGPT and more." },
+      { title: "PromptStar — AI Image Prompt Marketplace" },
+      { name: "description", content: "Discover image-generation prompts in every style — for Midjourney, Stable Diffusion, DALL-E, Flux and more." },
     ],
   }),
   component: MarketPage,
@@ -111,8 +111,8 @@ function MarketPage() {
           </div>
 
           <p className="mt-6 max-w-xl text-base text-ink/70 font-medium">
-            Hyperrealistic anime prompts, sorted by vibe. Browse the multiverse, save your favorites,
-            and build collections that hit different.
+            Image-generation prompts in every style, sorted by vibe. Browse the multiverse, save your
+            favorites, and build collections that hit different.
           </p>
 
           <div className="mt-10 max-w-2xl">

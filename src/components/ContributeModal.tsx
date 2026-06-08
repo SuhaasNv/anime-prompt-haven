@@ -141,7 +141,7 @@ export function ContributeModal({ open, onClose }: ContributeModalProps) {
             <div className="flex justify-between items-start mb-4 border-b-2 border-ink pb-3">
               <div>
                 <h2 className="font-display text-2xl uppercase leading-tight">Contribute a Prompt</h2>
-                <p className="text-xs text-ink/60 mt-1">List your creation on the market for other Senpais.</p>
+                <p className="text-xs text-ink/60 mt-1">List your creation on the market for other creators.</p>
               </div>
               <button
                 onClick={handleClose}
@@ -190,7 +190,7 @@ export function ContributeModal({ open, onClose }: ContributeModalProps) {
                   maxLength={80}
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  placeholder="Neo-Shinjuku Core"
+                  placeholder="Golden Hour Product Shot"
                   className="w-full bg-white border-2 border-ink p-2 font-bold text-sm focus:outline-none focus:ring-4 focus:ring-magenta/30"
                 />
               </div>
@@ -204,7 +204,7 @@ export function ContributeModal({ open, onClose }: ContributeModalProps) {
                   rows={2}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Rainy cyberpunk back-alleys with dense neon kanji signage and chrome reflections."
+                  placeholder="Studio product photography with soft golden-hour lighting and a glossy reflective surface."
                   className="w-full bg-white border-2 border-ink p-2 font-medium text-sm focus:outline-none focus:ring-4 focus:ring-magenta/30"
                 />
               </div>
@@ -218,7 +218,7 @@ export function ContributeModal({ open, onClose }: ContributeModalProps) {
                   rows={3}
                   value={body}
                   onChange={(e) => setBody(e.target.value)}
-                  placeholder="rain-soaked Neo-Tokyo alleyway, dense neon kanji signage, cyberpunk anime…"
+                  placeholder="product on a marble pedestal, soft golden-hour rim light, glossy reflections, shallow depth of field…"
                   className="w-full bg-white border-2 border-ink p-2 font-mono text-xs focus:outline-none focus:ring-4 focus:ring-magenta/30"
                 />
               </div>
