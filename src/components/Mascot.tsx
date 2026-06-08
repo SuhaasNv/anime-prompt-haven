@@ -1,13 +1,27 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouterState } from "@tanstack/react-router";
-import mascot from "@/assets/mascot-wave.png";
+import { getCurrentUser } from "@/lib/api/auth.functions";
 import { MASCOT_TIPS } from "@/lib/mock-data";
+import { MASCOTS, type MascotKey } from "@/lib/mascots";
 
 export function Mascot() {
   const [open, setOpen] = useState(true);
+  const [mascotKey, setMascotKey] = useState<MascotKey>("nova");
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const tip = MASCOT_TIPS[pathname] ?? MASCOT_TIPS.default;
+
+  useEffect(() => {
+    let cancelled = false;
+    getCurrentUser().then((user) => {
+      if (!cancelled && user) setMascotKey(user.mascot);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname]);
+
+  const active = MASCOTS[mascotKey];
 
   return (
     <div className="fixed bottom-6 right-6 z-[100] flex flex-col items-end gap-2 pointer-events-none">
@@ -44,13 +58,20 @@ export function Mascot() {
         className="pointer-events-auto relative size-24"
       >
         <div className="absolute inset-0 bg-magenta/40 blur-2xl rounded-full" />
-        <img
-          src={mascot}
-          alt="Nova-chan mascot"
-          width={96}
-          height={96}
-          className="relative z-10 size-24 drop-shadow-[4px_4px_0_rgba(0,0,0,1)]"
-        />
+        <AnimatePresence mode="wait">
+          <motion.img
+            key={mascotKey}
+            src={active.image}
+            alt={`${active.name} mascot`}
+            width={96}
+            height={96}
+            initial={{ opacity: 0, scale: 0.85 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.85 }}
+            transition={{ duration: 0.2 }}
+            className="relative z-10 size-24 drop-shadow-[4px_4px_0_rgba(0,0,0,1)]"
+          />
+        </AnimatePresence>
       </motion.button>
     </div>
   );

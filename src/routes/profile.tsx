@@ -1,9 +1,18 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 import { Navbar } from "@/components/Navbar";
-import mascot from "@/assets/mascot-wave.png";
+import { getCurrentUser, setMascot } from "@/lib/api/auth.functions";
+import { MASCOTS, type MascotKey } from "@/lib/mascots";
 
 export const Route = createFileRoute("/profile")({
+  beforeLoad: async () => {
+    const user = await getCurrentUser();
+    if (!user) {
+      throw redirect({ to: "/auth" });
+    }
+    return { user };
+  },
+  loader: ({ context }) => ({ user: context.user }),
   head: () => ({
     meta: [
       { title: "Studio — PromptStar" },
@@ -23,14 +32,33 @@ const themes = [
 const animationLevels = ["Off", "Low", "High"] as const;
 
 function ProfilePage() {
+  const router = useRouter();
+  const { user } = Route.useLoaderData();
   const [theme, setTheme] = useState("Magenta");
   const [animLevel, setAnimLevel] = useState<(typeof animationLevels)[number]>("High");
   const [fontSize, setFontSize] = useState(16);
+  const [companion, setCompanion] = useState<MascotKey>(user.mascot);
+  const [savingCompanion, setSavingCompanion] = useState(false);
+
+  const handlePickCompanion = async (key: MascotKey) => {
+    if (key === companion || savingCompanion) return;
+    const previous = companion;
+    setCompanion(key);
+    setSavingCompanion(true);
+    try {
+      await setMascot({ data: { mascot: key } });
+      await router.invalidate();
+    } catch {
+      setCompanion(previous);
+    } finally {
+      setSavingCompanion(false);
+    }
+  };
 
   return (
     <div className="min-h-screen">
       <Navbar />
-      <main className="relative z-10 max-w-5xl mx-auto px-6 py-10">
+      <main className="relative z-10 px-6 md:px-12 py-10">
         <h1 className="font-display text-5xl md:text-6xl uppercase mb-2">
           My <span className="text-magenta">Studio</span>
         </h1>
@@ -41,8 +69,8 @@ function ProfilePage() {
           <div className="md:col-span-1">
             <div className="bg-white border-4 border-ink p-6 shadow-pop">
               <div className="flex flex-col items-center text-center">
-                <img src={mascot} alt="Avatar" width={120} height={120} className="size-28 border-4 border-ink rounded-full bg-accent-yellow" />
-                <h2 className="font-display text-2xl uppercase mt-3">@senpai_99</h2>
+                <img src={MASCOTS[companion].image} alt="Avatar" width={120} height={120} className="size-28 border-4 border-ink rounded-full bg-accent-yellow object-contain" />
+                <h2 className="font-display text-2xl uppercase mt-3">@{user.username}</h2>
                 <p className="text-xs text-ink/60 mt-1">Prompt Collector · Lv. 12</p>
                 <div className="flex gap-2 mt-3">
                   <span className="px-2 py-1 bg-magenta text-white text-[10px] font-bold uppercase">Pro</span>
@@ -88,6 +116,33 @@ function ProfilePage() {
               </div>
             </Section>
 
+            <Section title="Companion">
+              <div className="grid grid-cols-2 gap-3">
+                {(Object.keys(MASCOTS) as MascotKey[]).map((key) => {
+                  const m = MASCOTS[key];
+                  const selected = companion === key;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => handlePickCompanion(key)}
+                      disabled={savingCompanion}
+                      aria-pressed={selected}
+                      className={`flex flex-col items-center gap-1 p-3 border-2 transition-all disabled:opacity-60 ${
+                        selected
+                          ? "border-ink bg-accent-yellow shadow-[4px_4px_0_0_#0a0a0c] -translate-x-0.5 -translate-y-0.5"
+                          : "border-ink/30 bg-white hover:border-ink"
+                      }`}
+                    >
+                      <img src={m.image} alt={m.name} width={64} height={64} className="size-16 object-contain" />
+                      <span className="font-display uppercase text-sm leading-none">{m.name}</span>
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-ink/50">{m.tagline}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </Section>
+
             <Section title="Animation Intensity">
               <div className="flex gap-3">
                 {animationLevels.map((lvl) => (
@@ -117,7 +172,7 @@ function ProfilePage() {
 
             <Section title="Account">
               <div className="space-y-2">
-                <Row label="Email" value="you@multiverse.io" />
+                <Row label="Email" value={user.email} />
                 <Row label="Password" value="••••••••" />
                 <Row label="Notifications" value="On" />
               </div>

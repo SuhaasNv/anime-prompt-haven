@@ -53,7 +53,7 @@ function PromptDetail() {
   return (
     <div className="min-h-screen">
       <Navbar />
-      <main className="relative z-10 max-w-6xl mx-auto px-6 py-10">
+      <main className="relative z-10 px-6 md:px-12 py-10">
         <Link
           to="/"
           className="inline-block text-sm font-bold uppercase tracking-wider mb-6 hover:text-magenta transition-colors"

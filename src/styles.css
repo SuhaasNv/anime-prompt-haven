@@ -43,6 +43,10 @@
 }
 
 :root {
+  /* Scales every rem-based size (type, spacing, radii) down so 100% zoom
+     reads the way the design was tuned to look at ~80% browser zoom. */
+  font-size: 80%;
+
   --radius: 0.25rem;
 
   --background: #ffffff;

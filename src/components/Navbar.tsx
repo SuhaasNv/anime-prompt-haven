@@ -11,7 +11,7 @@ export function Navbar() {
 
   return (
     <nav className="sticky top-0 z-50 bg-white/85 backdrop-blur-md border-b-4 border-ink">
-      <div className="max-w-7xl mx-auto px-6 py-3 flex justify-between items-center">
+      <div className="px-6 md:px-12 py-3 flex justify-between items-center">
         <Link to="/" className="flex items-center gap-2 group">
           <div className="size-10 bg-ink flex items-center justify-center rotate-3 group-hover:rotate-[-3deg] transition-transform">
             <span className="font-display text-magenta text-2xl leading-none">P!</span>

@@ -36,7 +36,7 @@ function MarketPage() {
     <div className="min-h-screen">
       <Navbar />
 
-      <main className="relative z-10 max-w-7xl mx-auto px-6 py-12">
+      <main className="relative z-10 px-6 md:px-12 py-12">
         {/* Hero */}
         <section className="mb-16">
           <div className="relative">
@@ -205,7 +205,7 @@ function MarketPage() {
 function Footer() {
   return (
     <footer className="bg-ink text-white py-12 px-6 mt-20 border-t-8 border-magenta">
-      <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-8">
+      <div className="flex flex-col md:flex-row justify-between items-center gap-8">
         <div className="font-display text-4xl uppercase italic">PROMPT STAR</div>
         <div className="flex gap-8 font-bold uppercase text-xs tracking-[0.2em]">
           <a href="#" className="hover:text-magenta transition-colors">Terms</a>

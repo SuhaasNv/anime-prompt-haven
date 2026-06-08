@@ -1,9 +1,23 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, redirect, useRouter } from "@tanstack/react-router";
 import { motion } from "framer-motion";
+import { useState } from "react";
 import { Navbar } from "@/components/Navbar";
-import { COLLECTIONS, PROMPTS } from "@/lib/mock-data";
+import { getCurrentUser } from "@/lib/api/auth.functions";
+import { createCollection, listCollections } from "@/lib/api/collections.functions";
+import { PROMPTS } from "@/lib/mock-data";
 
 export const Route = createFileRoute("/dashboard")({
+  beforeLoad: async () => {
+    const user = await getCurrentUser();
+    if (!user) {
+      throw redirect({ to: "/auth" });
+    }
+    return { user };
+  },
+  loader: async ({ context }) => {
+    const collections = await listCollections();
+    return { user: context.user, collections };
+  },
   head: () => ({
     meta: [
       { title: "My Binder — PromptStar" },
@@ -28,11 +42,80 @@ const sidebarLinks = [
   { label: "Settings", icon: "⚙️", to: "/profile" as const },
 ];
 
+function NewCollectionForm({ onClose }: { onClose: () => void }) {
+  const router = useRouter();
+  const [name, setName] = useState("");
+  const [vibe, setVibe] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSubmitting(true);
+    try {
+      await createCollection({ data: { name, vibe } });
+      await router.invalidate();
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't create that collection.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="border-2 border-dashed border-ink p-5 min-h-[230px] flex flex-col justify-center gap-3">
+      <div>
+        <label className="text-xs font-bold uppercase tracking-widest block mb-1">Name</label>
+        <input
+          type="text"
+          required
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Magical Girl Arc"
+          className="w-full bg-white border-2 border-ink p-2 font-bold text-sm focus:outline-none focus:ring-4 focus:ring-magenta/30"
+        />
+      </div>
+      <div>
+        <label className="text-xs font-bold uppercase tracking-widest block mb-1">Vibe (optional)</label>
+        <input
+          type="text"
+          value={vibe}
+          onChange={(e) => setVibe(e.target.value)}
+          placeholder="Sparkle bloom and soft pastels"
+          className="w-full bg-white border-2 border-ink p-2 font-bold text-sm focus:outline-none focus:ring-4 focus:ring-magenta/30"
+        />
+      </div>
+      {error && <p className="text-xs font-bold text-magenta">{error}</p>}
+      <div className="flex gap-2">
+        <button
+          type="submit"
+          disabled={submitting}
+          className="flex-1 bg-accent-orange text-white py-2 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all disabled:opacity-50"
+        >
+          {submitting ? "Saving…" : "Create"}
+        </button>
+        <button
+          type="button"
+          onClick={onClose}
+          className="px-4 bg-white text-ink py-2 font-display uppercase border-2 border-ink hover:bg-ink hover:text-white transition-colors"
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
 function Dashboard() {
+  const { user, collections } = Route.useLoaderData();
+  const [creating, setCreating] = useState(false);
+
   return (
     <div className="min-h-screen">
       <Navbar />
-      <main className="relative z-10 max-w-7xl mx-auto px-6 py-10">
+      <main className="relative z-10 px-6 md:px-12 py-10">
         <div className="grid grid-cols-12 gap-8">
           {/* Sidebar */}
           <aside className="col-span-12 md:col-span-3">
@@ -42,7 +125,7 @@ function Dashboard() {
                   ✨
                 </div>
                 <div>
-                  <div className="font-display uppercase text-sm">Senpai</div>
+                  <div className="font-display uppercase text-sm">{user.username}</div>
                   <div className="text-xs text-white/50">Prompt Collector</div>
                 </div>
               </div>
@@ -77,7 +160,10 @@ function Dashboard() {
                 </h1>
                 <p className="mt-2 text-ink/70 font-medium">Your private vault of S-rank prompt drops.</p>
               </div>
-              <button className="bg-accent-orange text-white px-5 py-3 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all whitespace-nowrap">
+              <button
+                onClick={() => setCreating(true)}
+                className="bg-accent-orange text-white px-5 py-3 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all whitespace-nowrap"
+              >
                 + New Collection
               </button>
             </div>
@@ -85,7 +171,7 @@ function Dashboard() {
             {/* Stats */}
             <div className="grid grid-cols-3 gap-3 mb-10">
               {[
-                { label: "Collections", value: COLLECTIONS.length, color: "magenta" as const },
+                { label: "Collections", value: collections.length, color: "magenta" as const },
                 { label: "Prompts", value: PROMPTS.length, color: "orange" as const },
                 { label: "This week", value: "+4", color: "yellow" as const },
               ].map((s) => (
@@ -99,7 +185,7 @@ function Dashboard() {
             {/* Collections grid */}
             <h2 className="font-display text-2xl uppercase mb-5 border-b-4 border-ink pb-2">Your Collections</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              {COLLECTIONS.map((c, i) => {
+              {collections.map((c, i) => {
                 const colors = colorMap[c.color];
                 return (
                   <motion.div
@@ -113,7 +199,7 @@ function Dashboard() {
                         <div className="flex justify-between items-start mb-3">
                           <div>
                             <div className={`text-xs font-bold uppercase tracking-widest ${colors.text}`}>
-                              {c.vibe}
+                              {c.vibe || "No vibe yet"}
                             </div>
                             <h3 className="font-display text-2xl uppercase mt-1">{c.name}</h3>
                           </div>
@@ -147,10 +233,17 @@ function Dashboard() {
                 );
               })}
 
-              <button className="border-2 border-dashed border-ink p-5 min-h-[230px] flex flex-col items-center justify-center hover:border-magenta hover:text-magenta transition-colors">
-                <div className="text-5xl">+</div>
-                <div className="font-display uppercase mt-2">New Collection</div>
-              </button>
+              {creating ? (
+                <NewCollectionForm onClose={() => setCreating(false)} />
+              ) : (
+                <button
+                  onClick={() => setCreating(true)}
+                  className="border-2 border-dashed border-ink p-5 min-h-[230px] flex flex-col items-center justify-center hover:border-magenta hover:text-magenta transition-colors"
+                >
+                  <div className="text-5xl">+</div>
+                  <div className="font-display uppercase mt-2">New Collection</div>
+                </button>
+              )}
             </div>
 
             {/* Recent prompts */}
