@@ -9,7 +9,7 @@ export const Route = createFileRoute("/prompt/$id")({
   loader: ({ params }) => {
     const prompt = getPrompt(params.id);
     if (!prompt) throw notFound();
-    return { prompt };
+    return { prompt: prompt! };
   },
   head: ({ loaderData }) =>
     loaderData

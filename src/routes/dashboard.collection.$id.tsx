@@ -6,7 +6,7 @@ export const Route = createFileRoute("/dashboard/collection/$id")({
   loader: ({ params }) => {
     const collection = getCollection(params.id);
     if (!collection) throw notFound();
-    return { collection };
+    return { collection: collection! };
   },
   head: ({ loaderData }) =>
     loaderData
