@@ -37,7 +37,7 @@ export const Route = createFileRoute("/prompt/$id")({
 });
 
 function PromptDetail() {
-  const { prompt } = Route.useLoaderData();
+  const { prompt } = Route.useLoaderData() as { prompt: NonNullable<ReturnType<typeof import("@/lib/mock-data").getPrompt>> };
   const [modalOpen, setModalOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [liked, setLiked] = useState(false);
