@@ -50,7 +50,7 @@ function ProfilePage() {
   const [fontSize, setFontSize] = useState(16);
   const [companion, setCompanion] = useState<MascotKey>(user.mascot);
   const [savingCompanion, setSavingCompanion] = useState(false);
-  const [stats, setStats] = useState<GamificationStats>(stats);
+  const [stats, setStats] = useState<GamificationStats>({ listingsCount: 0, salesCount: 0, savesReceived: 0, reviewsWritten: 0 });
 
   useEffect(() => {
     getMyStats().then((s) => setStats({ listingsCount: s.listingsCount, salesCount: s.salesCount, savesReceived: s.savesReceived, reviewsWritten: 0 }));
