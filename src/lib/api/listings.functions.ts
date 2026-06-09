@@ -399,6 +399,57 @@ export const getMyStats = createServerFn({ method: "GET" })
     };
   });
 
+export interface MyListing {
+  id: string;
+  title: string;
+  image: string;
+  price: number;
+  status: string;
+  viewCount: number;
+  saveCount: number;
+  copyCount: number;
+  purchaseCount: number;
+  totalEarnings: number;
+  createdAt: string;
+}
+
+export const listMyListings = createServerFn({ method: "GET" })
+  .handler(async (): Promise<MyListing[]> => {
+    const user = await getSessionUser();
+    if (!user) return [];
+
+    const db = getDb();
+    const result = await db.query(
+      `SELECT
+         pl.id, pl.title, pl.image, pl.price::text, pl.status,
+         pl.view_count, pl.save_count, pl.copy_count, pl.purchase_count,
+         COALESCE(
+           (SELECT SUM(p.price_paid * 0.70)
+            FROM purchases p WHERE p.listing_id = pl.id),
+           0
+         )::text AS total_earnings,
+         pl.created_at
+       FROM prompt_listings pl
+       WHERE pl.user_id = $1 AND pl.status != 'removed'
+       ORDER BY pl.created_at DESC`,
+      [user.id]
+    );
+
+    return result.rows.map((row: any) => ({
+      id: row.id,
+      title: row.title,
+      image: row.image,
+      price: parseFloat(row.price),
+      status: row.status,
+      viewCount: parseInt(row.view_count),
+      saveCount: parseInt(row.save_count),
+      copyCount: parseInt(row.copy_count),
+      purchaseCount: parseInt(row.purchase_count),
+      totalEarnings: parseFloat(row.total_earnings),
+      createdAt: row.created_at,
+    }));
+  });
+
 export const incrementViewCount = createServerFn({ method: "POST" })
   .validator(z.object({ id: z.string().uuid() }))
   .handler(async ({ data }) => {

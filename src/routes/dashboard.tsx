@@ -9,7 +9,7 @@ import { CURRENT_USER_QUERY_KEY, getCurrentUser } from "@/lib/api/auth.functions
 import { createCollection, listCollections } from "@/lib/api/collections.functions";
 import { listSavedPrompts } from "@/lib/api/saves.functions";
 import { listPurchases } from "@/lib/api/purchases.functions";
-import { getMyStats } from "@/lib/api/listings.functions";
+import { getMyStats, listMyListings, type MyListing } from "@/lib/api/listings.functions";
 import type { GamificationStats } from "@/lib/gamification";
 import { PROMPTS } from "@/lib/mock-data";
 import type { Prompt } from "@/lib/mock-data";
@@ -56,6 +56,7 @@ const DASHBOARD_VIEWS = [
   { id: "collections", label: "Collections", icon: "📚" },
   { id: "saved", label: "All Saved", icon: "⭐" },
   { id: "purchased", label: "Purchased", icon: "💎" },
+  { id: "myprompts", label: "My Prompts", icon: "🎨" },
 ] as const;
 
 type DashboardView = (typeof DASHBOARD_VIEWS)[number]["id"];
@@ -135,6 +136,7 @@ function Dashboard() {
   const [activeView, setActiveView] = useState<DashboardView>("collections");
   const [savedPrompts, setSavedPrompts] = useState<Prompt[]>([]);
   const [purchasedPrompts, setPurchasedPrompts] = useState<Prompt[]>([]);
+  const [myListings, setMyListings] = useState<MyListing[]>([]);
   const [loadingData, setLoadingData] = useState(false);
   const [gamificationStats, setGamificationStats] = useState<GamificationStats>({ listingsCount: 0, salesCount: 0, savesReceived: 0, reviewsWritten: 0 });
 
@@ -142,9 +144,10 @@ function Dashboard() {
     const loadData = async () => {
       setLoadingData(true);
       try {
-        const [saved, purchased, myStats] = await Promise.all([listSavedPrompts(), listPurchases(), getMyStats()]);
+        const [saved, purchased, myStats, myListingsData] = await Promise.all([listSavedPrompts(), listPurchases(), getMyStats(), listMyListings()]);
         setSavedPrompts(saved);
         setPurchasedPrompts(purchased);
+        setMyListings(myListingsData);
         setGamificationStats({ listingsCount: myStats.listingsCount, salesCount: myStats.salesCount, savesReceived: myStats.savesReceived, reviewsWritten: 0 });
       } catch (err) {
         console.error("Failed to load dashboard data", err);
@@ -217,6 +220,7 @@ function Dashboard() {
                   if (v.id === "saved") count = savedPrompts.length;
                   if (v.id === "purchased") count = purchasedPrompts.length;
                   if (v.id === "collections") count = collections.length;
+                  if (v.id === "myprompts") count = myListings.length;
 
                   return (
                     <button
@@ -411,6 +415,117 @@ function Dashboard() {
                       <PromptCard key={p.id} prompt={p} />
                     ))}
                   </div>
+                )}
+              </>
+            )}
+            {activeView === "myprompts" && (
+              <>
+                <div className="flex items-center justify-between mb-5 border-b-4 border-ink pb-2">
+                  <h2 className="font-display text-2xl uppercase">My Prompts</h2>
+                  <button
+                    onClick={() => setContributing(true)}
+                    className="bg-magenta text-white px-4 py-2 font-display uppercase text-xs border-2 border-ink shadow-[3px_3px_0_0_#0a0a0c] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all"
+                  >
+                    + Publish New
+                  </button>
+                </div>
+
+                {loadingData ? (
+                  <div className="py-16 text-center">
+                    <p className="text-ink/60 animate-pulse">Loading your prompts…</p>
+                  </div>
+                ) : myListings.length === 0 ? (
+                  <div className="py-16 text-center border-2 border-dashed border-ink">
+                    <div className="text-5xl mb-3">🎨</div>
+                    <p className="font-display text-2xl uppercase text-ink/40">No prompts yet</p>
+                    <p className="text-sm text-ink/60 mt-2 mb-6">Publish your first prompt to start earning.</p>
+                    <button
+                      onClick={() => setContributing(true)}
+                      className="bg-magenta text-white px-6 py-3 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all"
+                    >
+                      + Publish a Prompt
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    {/* Aggregate stats bar */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
+                      {[
+                        { label: "Total Views", value: myListings.reduce((s, l) => s + l.viewCount, 0).toLocaleString(), icon: "👁️" },
+                        { label: "Total Saves", value: myListings.reduce((s, l) => s + l.saveCount, 0).toLocaleString(), icon: "⭐" },
+                        { label: "Total Copies", value: myListings.reduce((s, l) => s + l.copyCount, 0).toLocaleString(), icon: "📋" },
+                        { label: "Total Earned", value: `✦ ${myListings.reduce((s, l) => s + l.totalEarnings, 0).toFixed(2)}`, icon: "💰" },
+                      ].map((stat) => (
+                        <div key={stat.label} className="bg-white border-4 border-ink p-4 text-center shadow-pop">
+                          <div className="text-2xl mb-1">{stat.icon}</div>
+                          <div className="font-display text-xl uppercase leading-none">{stat.value}</div>
+                          <div className="text-[10px] font-bold uppercase tracking-widest text-ink/60 mt-1">{stat.label}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Listing cards */}
+                    <div className="space-y-4">
+                      {myListings.map((listing) => (
+                        <div key={listing.id} className="bg-white border-4 border-ink shadow-pop hover:shadow-pop-lg transition-shadow">
+                          <div className="flex gap-4 p-4">
+                            <img
+                              src={listing.image}
+                              alt={listing.title}
+                              loading="lazy"
+                              className="size-20 object-cover border-2 border-ink shrink-0"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-start justify-between gap-2 mb-1">
+                                <h3 className="font-display uppercase text-lg leading-tight truncate">{listing.title}</h3>
+                                <span className={`shrink-0 px-2 py-0.5 text-[10px] font-bold uppercase border-2 ${
+                                  listing.status === "published" ? "bg-green-100 border-green-600 text-green-700" :
+                                  listing.status === "draft" ? "bg-accent-yellow border-ink text-ink" :
+                                  listing.status === "flagged" ? "bg-magenta/10 border-magenta text-magenta" :
+                                  "bg-ink/10 border-ink/40 text-ink/50"
+                                }`}>
+                                  {listing.status}
+                                </span>
+                              </div>
+                              <div className="text-sm font-bold text-ink/70">
+                                {listing.price === 0 ? "Free" : `✦ ${listing.price.toFixed(2)}`}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Stats row */}
+                          <div className="border-t-4 border-ink grid grid-cols-4 divide-x-4 divide-ink">
+                            {[
+                              { icon: "👁️", label: "Views", value: listing.viewCount },
+                              { icon: "⭐", label: "Saves", value: listing.saveCount },
+                              { icon: "📋", label: "Copies", value: listing.copyCount },
+                              { icon: "💎", label: "Sales", value: listing.purchaseCount },
+                            ].map((s) => (
+                              <div key={s.label} className="p-3 text-center">
+                                <div className="text-lg">{s.icon}</div>
+                                <div className="font-display text-xl uppercase leading-none">{s.value}</div>
+                                <div className="text-[9px] font-bold uppercase tracking-widest text-ink/50 mt-0.5">{s.label}</div>
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Earnings + link */}
+                          <div className="border-t-4 border-ink px-4 py-2.5 flex items-center justify-between bg-accent-yellow/30">
+                            <span className="text-xs font-bold uppercase tracking-wide">
+                              Earned: <span className="text-green-700 font-mono">✦ {listing.totalEarnings.toFixed(2)}</span>
+                            </span>
+                            <Link
+                              to="/prompt/$id"
+                              params={{ id: listing.id }}
+                              className="text-xs font-bold uppercase hover:text-magenta transition-colors"
+                            >
+                              View Listing →
+                            </Link>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
                 )}
               </>
             )}
