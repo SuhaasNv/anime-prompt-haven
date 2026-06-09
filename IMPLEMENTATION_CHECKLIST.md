@@ -28,13 +28,14 @@
 - [x] Build verification: ✓ compiled successfully
 
 ### 1C. Fix collection detail prompt resolution
-- [ ] Read `src/routes/dashboard.collection.$id.tsx` current implementation
-- [ ] Add UUID regex check: `const isUUID = /^[0-9a-f-]{36}$/i.test(promptId)`
-- [ ] For each `promptId` in collection:
+- [x] Read `src/routes/dashboard.collection.$id.tsx` current implementation
+- [x] Add UUID regex check: `const isUUID = /^[0-9a-f-]{36}$/i.test(promptId)`
+- [x] Create `resolvePrompt()` helper function
   - If UUID: call `getListing({ data: { id } })`
   - If slug: call `getPrompt(id)` from mock-data (legacy support)
-- [ ] Update component to render resolved prompts
-- [ ] Test: DB prompts in collections render correctly
+- [x] Update loader to resolve all prompts in collection
+- [x] Update component to render resolved prompts from loader
+- [x] Build verification: ✓ compiled successfully
 
 ### 1D. Prepare for saved/purchased tabs (Phase 2)
 - [ ] Note: Requires `saved_prompts` and `purchases` tables

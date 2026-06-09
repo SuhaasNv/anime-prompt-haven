@@ -3,7 +3,27 @@ import { useState } from "react";
 import { Navbar } from "@/components/Navbar";
 import { getCurrentUser } from "@/lib/api/auth.functions";
 import { addPromptToCollection, listCollections } from "@/lib/api/collections.functions";
-import { PROMPTS } from "@/lib/mock-data";
+import { getListing } from "@/lib/api/listings.functions";
+import { getPrompt, PROMPTS, type Prompt } from "@/lib/mock-data";
+
+// Helper to resolve a prompt ID to a full Prompt object
+// Checks if it's a UUID (DB listing) or slug (mock data)
+async function resolvePrompt(promptId: string): Promise<Prompt | null> {
+  const isUUID = /^[0-9a-f-]{36}$/i.test(promptId);
+
+  if (isUUID) {
+    // Try to load from DB
+    try {
+      return await getListing({ data: { id: promptId } });
+    } catch {
+      // Listing doesn't exist or was deleted
+      return null;
+    }
+  } else {
+    // Fall back to mock data
+    return getPrompt(promptId) ?? null;
+  }
+}
 
 export const Route = createFileRoute("/dashboard/collection/$id")({
   beforeLoad: async () => {
@@ -17,7 +37,15 @@ export const Route = createFileRoute("/dashboard/collection/$id")({
     const collections = await listCollections();
     const collection = collections.find((c) => c.id === params.id);
     if (!collection) throw notFound();
-    return { collection };
+
+    // Resolve all prompts in the collection (from both DB and mock data)
+    const resolvedPrompts = await Promise.all(
+      collection.promptIds.map((id) => resolvePrompt(id))
+    );
+    // Filter out null values (deleted prompts)
+    const prompts = resolvedPrompts.filter((p): p is Prompt => p !== null);
+
+    return { collection, prompts };
   },
   head: ({ loaderData }) =>
     loaderData
@@ -100,11 +128,8 @@ function AddPromptPicker({ collectionId, savedIds, onClose }: { collectionId: st
 }
 
 function CollectionDetail() {
-  const { collection } = Route.useLoaderData();
+  const { collection, prompts } = Route.useLoaderData();
   const [adding, setAdding] = useState(false);
-  const prompts = collection.promptIds
-    .map((id) => PROMPTS.find((p) => p.id === id))
-    .filter((p): p is (typeof PROMPTS)[number] => Boolean(p));
   const colors = colorMap[collection.color];
 
   return (
