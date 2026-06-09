@@ -2,7 +2,19 @@
   "permissions": {
     "allow": [
       "Bash(npm run *)",
-      "Bash(npm install *)"
+      "Bash(npm install *)",
+      "Bash(disown)",
+      "Read(//tmp/**)",
+      "Skill(run)",
+      "Bash(curl -s http://localhost:3000/)",
+      "Bash(curl -v http://localhost:3000/)",
+      "Bash(curl -s http://localhost:3000)",
+      "Bash(curl -s http://localhost:3000/dashboard)",
+      "Bash(pkill -f \"vite dev\")",
+      "Bash(pkill -f \"node.*vite\\\\|npm.*dev\")",
+      "Bash(echo \"Dev server starting, PID: $!\")",
+      "Bash(xargs kill -9)",
+      "Bash(echo \"PID: $!\")"
     ]
   }
 }
