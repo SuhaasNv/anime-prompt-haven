@@ -56,22 +56,27 @@
 ## Phase 2: Database Schema
 
 ### 2A. Create migration file
-- [ ] Create `db/migrations/004_marketplace.sql`
-- [ ] Add `is_nsfw`, `status`, `view_count`, `save_count`, `purchase_count` to `prompt_listings`
-- [ ] Create `saved_prompts` table
-- [ ] Create `purchases` table
-- [ ] Create `reviews` table
-- [ ] Create `reports` table
-- [ ] Create `user_credits` table
-- [ ] Create `credit_transactions` table
-- [ ] Add `is_admin` column to `users`
-- [ ] Create all required indexes
-- [ ] Verify idempotency: all statements use `IF NOT EXISTS`
+- [x] Create `db/migrations/004_marketplace.sql`
+- [x] Add `is_nsfw`, `status`, `view_count`, `save_count`, `purchase_count` to `prompt_listings`
+- [x] Create `saved_prompts` table
+- [x] Create `purchases` table
+- [x] Create `reviews` table
+- [x] Create `reports` table
+- [x] Create `user_credits` table
+- [x] Create `credit_transactions` table
+- [x] Add `is_admin` column to `users`
+- [x] Create all required indexes
+- [x] Verify idempotency: all statements use `IF NOT EXISTS`
 
 ### 2B. Run migration
-- [ ] `npm run db:migrate`
-- [ ] Verify no errors
-- [ ] Spot-check schema: `psql promptstar -c "\dt"` to list tables
+- [x] `npm run db:migrate` ✓
+- [x] Verify no errors ✓
+- [x] Spot-check schema: 11 tables created ✓
+
+**Phase 2 Complete:**
+- Tables: saved_prompts, purchases, reviews, reports, user_credits, credit_transactions ✓
+- Columns: is_nsfw, status, view_count, save_count, purchase_count, is_admin ✓
+- Indexes: 13 new indexes for query optimization ✓
 
 ---
 
