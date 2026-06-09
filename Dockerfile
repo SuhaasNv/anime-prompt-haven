@@ -10,8 +10,6 @@ RUN bun install --frozen-lockfile
 # Copy source
 COPY . .
 
-# Build for Node.js target (default is cloudflare workers)
-ENV NITRO_PRESET=node
 RUN bun run build
 
 # ── Stage 2: runtime ─────────────────────────────────────────────────────────
@@ -20,7 +18,7 @@ FROM node:20-slim AS runner
 WORKDIR /app
 
 # Copy built output and migration scripts
-COPY --from=builder /app/.output ./.output
+COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/db ./db
 COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/package.json ./package.json
