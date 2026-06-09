@@ -218,8 +218,8 @@ function MarketPage() {
         </section>
 
         {/* Categories + sort strip */}
-        <section className="mb-10 -mx-6 px-6 overflow-x-auto">
-          <div className="flex items-center justify-between gap-4 min-w-min border-b-4 border-ink pb-0">
+        <section className="mb-10">
+          <div className="flex items-center justify-between gap-4">
             {/* Category tabs */}
             <div className="flex gap-0">
               {CATEGORIES.map((c) => {
@@ -241,7 +241,7 @@ function MarketPage() {
             </div>
 
             {/* Custom sort dropdown */}
-            <div ref={sortRef} className="relative shrink-0 pb-[4px]">
+            <div ref={sortRef} className="relative shrink-0">
               <button
                 type="button"
                 onClick={() => setSortOpen((o) => !o)}
