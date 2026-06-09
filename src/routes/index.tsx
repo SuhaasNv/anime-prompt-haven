@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Navbar } from "@/components/Navbar";
 import { PromptCard } from "@/components/PromptCard";
@@ -9,6 +9,14 @@ import { CATEGORIES, TAGS } from "@/lib/mock-data";
 import { MASCOTS, type MascotKey } from "@/lib/mascots";
 
 type SortOption = "newest" | "trending" | "price_asc" | "price_desc" | "rating";
+
+const SORT_OPTIONS: { value: SortOption; label: string }[] = [
+  { value: "newest",     label: "New Drops" },
+  { value: "trending",   label: "Trending" },
+  { value: "price_asc",  label: "Price ↑" },
+  { value: "price_desc", label: "Price ↓" },
+  { value: "rating",     label: "Top Rated" },
+];
 
 const MASCOT_KEYS = Object.keys(MASCOTS) as MascotKey[];
 
@@ -45,6 +53,8 @@ function MarketPage() {
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [sort, setSort] = useState<SortOption>("newest");
   const [isLoading, setIsLoading] = useState(false);
+  const [sortOpen, setSortOpen] = useState(false);
+  const sortRef = useRef<HTMLDivElement>(null);
   const reduceMotion = useReducedMotion();
 
   useEffect(() => {
@@ -68,6 +78,15 @@ function MarketPage() {
     };
     fetchListings();
   }, [sort, category]);
+
+  useEffect(() => {
+    if (!sortOpen) return;
+    const handle = (e: MouseEvent) => {
+      if (sortRef.current && !sortRef.current.contains(e.target as Node)) setSortOpen(false);
+    };
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, [sortOpen]);
 
   // Picked client-side (post-mount) so the server-rendered markup never has to
   // guess — guarantees the choice matches what the visitor actually sees and
@@ -195,41 +214,62 @@ function MarketPage() {
               })}
             </div>
 
-            <div className="mt-6 flex gap-4 flex-wrap">
-              <select
-                value={sort}
-                onChange={(e) => setSort(e.target.value as SortOption)}
-                className="bg-white border-2 border-ink px-4 py-2 font-bold text-xs uppercase focus:outline-none focus:ring-4 focus:ring-magenta/30"
-              >
-                <option value="newest">Newest</option>
-                <option value="trending">Trending</option>
-                <option value="price_asc">Price: Low → High</option>
-                <option value="price_desc">Price: High → Low</option>
-                <option value="rating">Top Rated</option>
-              </select>
-            </div>
           </div>
         </section>
 
-        {/* Categories strip */}
+        {/* Categories + sort strip */}
         <section className="mb-10 -mx-6 px-6 overflow-x-auto">
-          <div className="flex gap-2 min-w-min">
-            {CATEGORIES.map((c) => {
-              const active = c === category;
-              return (
-                <button
-                  key={c}
-                  onClick={() => setCategory(c)}
-                  className={`px-4 py-2 font-bold uppercase text-xs border-2 border-ink whitespace-nowrap transition-all ${
-                    active
-                      ? "bg-ink text-white shadow-[3px_3px_0_0_#d400ff]"
-                      : "bg-white text-ink hover:bg-accent-orange hover:text-white"
-                  }`}
-                >
-                  {c}
-                </button>
-              );
-            })}
+          <div className="flex items-center justify-between gap-4 min-w-min border-b-4 border-ink pb-0">
+            {/* Category tabs */}
+            <div className="flex gap-0">
+              {CATEGORIES.map((c) => {
+                const active = c === category;
+                return (
+                  <button
+                    key={c}
+                    onClick={() => setCategory(c)}
+                    className={`px-5 py-2.5 font-bold uppercase text-xs border-2 border-b-0 border-ink whitespace-nowrap transition-all ${
+                      active
+                        ? "bg-ink text-white"
+                        : "bg-white text-ink hover:bg-accent-orange hover:text-white"
+                    }`}
+                  >
+                    {c}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Custom sort dropdown */}
+            <div ref={sortRef} className="relative shrink-0 pb-[4px]">
+              <button
+                type="button"
+                onClick={() => setSortOpen((o) => !o)}
+                className="flex items-center gap-2 px-4 py-2 bg-white border-2 border-ink font-bold uppercase text-xs whitespace-nowrap hover:bg-accent-yellow transition-colors"
+              >
+                <span className="text-ink/50">SORT:</span>
+                <span>{SORT_OPTIONS.find((o) => o.value === sort)?.label}</span>
+                <span className={`text-[10px] transition-transform duration-200 ${sortOpen ? "rotate-180" : ""}`}>▾</span>
+              </button>
+              {sortOpen && (
+                <div className="absolute right-0 top-full mt-1 bg-white border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] z-20 min-w-[160px]">
+                  {SORT_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => { setSort(opt.value); setSortOpen(false); }}
+                      className={`w-full text-left px-4 py-2.5 font-bold uppercase text-xs border-b border-ink/10 last:border-0 transition-colors ${
+                        sort === opt.value
+                          ? "bg-magenta text-white"
+                          : "hover:bg-accent-yellow"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </section>
 

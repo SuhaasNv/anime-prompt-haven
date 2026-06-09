@@ -24,7 +24,7 @@ function TermsPage() {
   return (
     <div className="min-h-screen">
       <Navbar />
-      <main className="relative z-10 px-6 md:px-12 py-10 max-w-3xl mx-auto">
+      <main className="relative z-10 px-6 md:px-12 py-10">
         <Link to="/" className="text-xs font-bold uppercase tracking-widest text-ink/60 hover:text-magenta">
           ← Back to Market
         </Link>

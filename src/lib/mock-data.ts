@@ -131,10 +131,6 @@ export const PROMPTS: Prompt[] = [
 export const CATEGORIES = [
   "All",
   "Image Generation",
-  "Content Writing",
-  "Coding",
-  "Marketing",
-  "Roleplay",
 ];
 
 export const MODELS = ["Midjourney", "ChatGPT", "DALL-E", "Flux", "Stable Diffusion"];
