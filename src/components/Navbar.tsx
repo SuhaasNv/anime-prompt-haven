@@ -3,6 +3,8 @@ import { Link, useRouter, useRouterState } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CURRENT_USER_QUERY_KEY, getCurrentUser, signOut } from "@/lib/api/auth.functions";
 import { MASCOTS } from "@/lib/mascots";
+import { CreditBalanceWidget } from "./CreditBalanceWidget";
+import { CreditsModal } from "./CreditsModal";
 
 const links = [
   { to: "/", label: "Market" },
@@ -15,6 +17,7 @@ export function Navbar() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [menuOpen, setMenuOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [creditsOpen, setCreditsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   // Cached under a stable key in the app-wide QueryClient (which outlives any
@@ -53,6 +56,7 @@ export function Navbar() {
   };
 
   return (
+    <>
     <nav className="sticky top-0 z-50 bg-white/85 backdrop-blur-md border-b-4 border-ink">
       <div className="px-6 md:px-12 py-3 flex justify-between items-center">
         <Link to="/" className="flex items-center gap-2 group">
@@ -80,13 +84,15 @@ export function Navbar() {
         </div>
 
         {user ? (
-          <div ref={menuRef} className="relative">
-            <button
-              onClick={() => setMenuOpen((o) => !o)}
-              aria-haspopup="true"
-              aria-expanded={menuOpen}
-              className="flex items-center gap-2 border-2 border-ink rounded-full pl-1 pr-3 py-1 bg-accent-yellow hover:bg-accent-orange hover:text-white transition-colors"
-            >
+          <div className="flex items-center gap-4">
+            <CreditBalanceWidget onOpen={() => setCreditsOpen(true)} />
+            <div ref={menuRef} className="relative">
+              <button
+                onClick={() => setMenuOpen((o) => !o)}
+                aria-haspopup="true"
+                aria-expanded={menuOpen}
+                className="flex items-center gap-2 border-2 border-ink rounded-full pl-1 pr-3 py-1 bg-accent-yellow hover:bg-accent-orange hover:text-white transition-colors"
+              >
               <img
                 src={MASCOTS[user.mascot].image}
                 alt=""
@@ -115,6 +121,7 @@ export function Navbar() {
                 </button>
               </div>
             )}
+            </div>
           </div>
         ) : (
           <div className="flex items-center gap-3">
@@ -134,5 +141,7 @@ export function Navbar() {
         )}
       </div>
     </nav>
+    <CreditsModal open={creditsOpen} onClose={() => setCreditsOpen(false)} />
+    </>
   );
 }

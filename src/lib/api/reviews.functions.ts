@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { getSessionUser } from "../auth.server";
 import { getDb } from "../db.server";
+import { sanitize } from "../sanitize";
 
 export const createReview = createServerFn({ method: "POST" })
   .validator(
@@ -33,7 +34,7 @@ export const createReview = createServerFn({ method: "POST" })
        VALUES ($1, $2, $3, $4)
        ON CONFLICT (listing_id, user_id) DO UPDATE
        SET rating = $3, body = $4`,
-      [data.listingId, user.id, data.rating, data.body || null]
+      [data.listingId, user.id, data.rating, data.body ? sanitize(data.body) : null]
     );
 
     return { ok: true as const };

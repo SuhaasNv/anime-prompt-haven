@@ -75,8 +75,9 @@ export const purchaseListing = createServerFn({ method: "POST" })
         [price, user.id]
       );
 
-      // 3. Add to seller's balance (80% split)
-      const sellerEarnings = price * 0.8;
+      // 3. Add to seller's balance (70% split; platform keeps 30%)
+      const sellerEarnings = Math.round(price * 0.70 * 100) / 100;
+      const platformFee = Math.round(price * 0.30 * 100) / 100;
       await db.query(
         `INSERT INTO user_credits (user_id, balance) VALUES ($1, $2)
          ON CONFLICT (user_id) DO UPDATE
@@ -96,6 +97,13 @@ export const purchaseListing = createServerFn({ method: "POST" })
         `INSERT INTO credit_transactions (user_id, amount, type, reference_id, note)
          VALUES ($1, $2, 'sale_earn', $3, $4)`,
         [sellerId, sellerEarnings, purchaseId, `Sale earnings from purchase`]
+      );
+
+      // 6a. Log platform fee (audit trail)
+      await db.query(
+        `INSERT INTO credit_transactions (user_id, amount, type, reference_id, note)
+         VALUES ($1, $2, 'platform_fee', $3, $4)`,
+        [sellerId, -platformFee, purchaseId, `Platform fee (30%)`]
       );
 
       // 6. Increment purchase count on listing

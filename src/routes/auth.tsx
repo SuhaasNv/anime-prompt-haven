@@ -2,7 +2,7 @@ import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { useQueryClient } from "@tanstack/react-query";
-import { CURRENT_USER_QUERY_KEY, signIn, signUp } from "@/lib/api/auth.functions";
+import { CURRENT_USER_QUERY_KEY, getCurrentUser, signIn, signUp } from "@/lib/api/auth.functions";
 import { MASCOTS, type MascotKey } from "@/lib/mascots";
 
 // Nova-chan only ships one piece of art, so each "mood" restyles that single
@@ -102,11 +102,11 @@ function AuthPage() {
       } else {
         await signIn({ data: { email, password, rememberMe } });
       }
-      // Refresh the navbar's cached session before navigating, so the
-      // avatar is already correct on the very first render of /dashboard
-      // instead of showing "Sign in" for a frame while it refetches.
-      await queryClient.invalidateQueries({ queryKey: CURRENT_USER_QUERY_KEY });
-      await router.invalidate();
+      // Fetch the fresh user from the server now that the session cookie is set,
+      // then write it directly into the cache. This eliminates the race where
+      // the dashboard's beforeLoad sees a stale/null entry and redirects back.
+      const user = await getCurrentUser();
+      queryClient.setQueryData(CURRENT_USER_QUERY_KEY, user);
       await router.navigate({ to: "/dashboard" });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong — try again.");

@@ -1,8 +1,9 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "@tanstack/react-router";
 
-import { createListing } from "@/lib/api/listings.functions";
+import { createListing, listListings } from "@/lib/api/listings.functions";
+import { getCurrentUser } from "@/lib/api/auth.functions";
 import { CATEGORIES, MODELS } from "@/lib/mock-data";
 
 const LISTING_CATEGORIES = CATEGORIES.filter((c) => c !== "All");
@@ -28,6 +29,33 @@ export function ContributeModal({ open, onClose }: ContributeModalProps) {
   const [imageName, setImageName] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<"draft" | "published">("published");
+  const [activeListingCount, setActiveListingCount] = useState(0);
+  const [user, setUser] = useState<{ id: string; username: string } | null>(null);
+  const [loadingListings, setLoadingListings] = useState(false);
+  const [checkingImage, setCheckingImage] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const loadUserData = async () => {
+      try {
+        const currentUser = await getCurrentUser();
+        setUser(currentUser);
+        if (currentUser) {
+          setLoadingListings(true);
+          const listings = await listListings({
+            data: { userId: currentUser.id, limit: 100, offset: 0 },
+          });
+          setActiveListingCount(listings.length);
+        }
+      } catch (err) {
+        console.error("Failed to load user data", err);
+      } finally {
+        setLoadingListings(false);
+      }
+    };
+    loadUserData();
+  }, [open]);
 
   const reset = () => {
     setTitle("");
@@ -40,7 +68,54 @@ export function ContributeModal({ open, onClose }: ContributeModalProps) {
     setImageDataUrl(null);
     setImageName(null);
     setError(null);
+    setStatus("published");
     if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  // Simple NSFW detection - in production, use Google Cloud Vision API or similar
+  // This checks for basic indicators; a real implementation would analyze image content
+  const checkImageForNSFW = async (dataUrl: string): Promise<boolean> => {
+    return new Promise((resolve) => {
+      // Create a hidden image element to analyze
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const canvas = document.createElement("canvas");
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            resolve(false);
+            return;
+          }
+          ctx.drawImage(img, 0, 0);
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const data = imageData.data;
+
+          // Simple heuristic: check for skin tone colors (R > 95, G > 40, B > 20, R > G, R > B)
+          // and if they cover >40% of image, flag as potential NSFW
+          let skinPixels = 0;
+          for (let i = 0; i < data.length; i += 4) {
+            const r = data[i];
+            const g = data[i + 1];
+            const b = data[i + 2];
+            if (r > 95 && g > 40 && b > 20 && r > g && r > b) {
+              skinPixels++;
+            }
+          }
+
+          const totalPixels = data.length / 4;
+          const skinPercentage = (skinPixels / totalPixels) * 100;
+
+          // This is a very basic heuristic - flag if >50% appears to be skin tone
+          resolve(skinPercentage > 50);
+        } catch {
+          resolve(false);
+        }
+      };
+      img.onerror = () => resolve(false);
+      img.src = dataUrl;
+    });
   };
 
   const handleClose = () => {
@@ -49,7 +124,7 @@ export function ContributeModal({ open, onClose }: ContributeModalProps) {
     onClose();
   };
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) {
       setImageDataUrl(null);
@@ -66,11 +141,24 @@ export function ContributeModal({ open, onClose }: ContributeModalProps) {
       e.target.value = "";
       return;
     }
-    setError(null);
-    setImageName(file.name);
+
+    setCheckingImage(true);
     const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") setImageDataUrl(reader.result);
+    reader.onload = async () => {
+      if (typeof reader.result === "string") {
+        const isNsfw = await checkImageForNSFW(reader.result);
+        setCheckingImage(false);
+        if (isNsfw) {
+          setError("⚠️ NSFW content detected. Please upload a different image that follows our community guidelines.");
+          e.target.value = "";
+          setImageDataUrl(null);
+          setImageName(null);
+          return;
+        }
+        setError(null);
+        setImageName(file.name);
+        setImageDataUrl(reader.result);
+      }
     };
     reader.readAsDataURL(file);
   };
@@ -81,6 +169,11 @@ export function ContributeModal({ open, onClose }: ContributeModalProps) {
 
     if (!imageDataUrl) {
       setError("An image is required to list a prompt on the market.");
+      return;
+    }
+
+    if (status === "published" && activeListingCount >= 10) {
+      setError("You've reached the maximum of 10 published listings. Save this as a draft or remove another listing.");
       return;
     }
 
@@ -108,6 +201,7 @@ export function ContributeModal({ open, onClose }: ContributeModalProps) {
           category,
           model: model as (typeof MODELS)[number],
           tags,
+          status,
         },
       });
       await router.invalidate();
@@ -168,7 +262,11 @@ export function ContributeModal({ open, onClose }: ContributeModalProps) {
                 />
                 <label
                   htmlFor="contribute-image"
-                  className="flex items-center gap-3 border-2 border-dashed border-ink p-3 cursor-pointer hover:border-magenta hover:text-magenta transition-colors"
+                  className={`flex items-center gap-3 border-2 border-dashed p-3 transition-colors ${
+                    checkingImage
+                      ? "border-orange cursor-wait text-orange"
+                      : "border-ink cursor-pointer hover:border-magenta hover:text-magenta"
+                  }`}
                 >
                   {imageDataUrl ? (
                     <img src={imageDataUrl} alt="Preview" className="size-16 object-cover border-2 border-ink shrink-0" />
@@ -176,7 +274,7 @@ export function ContributeModal({ open, onClose }: ContributeModalProps) {
                     <span className="size-16 border-2 border-ink flex items-center justify-center text-2xl shrink-0 bg-secondary">🖼️</span>
                   )}
                   <span className="text-sm font-bold uppercase truncate">
-                    {imageName ?? "Click to upload an image — required"}
+                    {checkingImage ? "Checking image..." : (imageName ?? "Click to upload an image — required")}
                   </span>
                 </label>
               </div>
@@ -230,8 +328,8 @@ export function ContributeModal({ open, onClose }: ContributeModalProps) {
                     type="number"
                     required
                     min={0}
-                    max={999}
-                    step="1"
+                    max={49.99}
+                    step="0.01"
                     value={price}
                     onChange={(e) => setPrice(e.target.value)}
                     className="w-full bg-white border-2 border-ink p-2 font-bold text-sm focus:outline-none focus:ring-4 focus:ring-magenta/30"
@@ -274,6 +372,40 @@ export function ContributeModal({ open, onClose }: ContributeModalProps) {
                   className="w-full bg-white border-2 border-ink p-2 font-bold text-sm focus:outline-none focus:ring-4 focus:ring-magenta/30"
                 />
               </div>
+
+              <div>
+                <label className="text-xs font-bold uppercase tracking-widest block mb-2">Publish Status</label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setStatus("draft")}
+                    className={`flex-1 py-2 font-bold uppercase text-xs border-2 border-ink transition-colors ${
+                      status === "draft"
+                        ? "bg-ink text-white"
+                        : "bg-white text-ink hover:bg-ink/10"
+                    }`}
+                  >
+                    Draft
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStatus("published")}
+                    className={`flex-1 py-2 font-bold uppercase text-xs border-2 border-ink transition-colors ${
+                      status === "published"
+                        ? "bg-ink text-white"
+                        : "bg-white text-ink hover:bg-ink/10"
+                    }`}
+                  >
+                    Publish
+                  </button>
+                </div>
+              </div>
+
+              {status === "published" && activeListingCount >= 10 && (
+                <p className="text-xs font-bold text-magenta bg-magenta/10 p-2 border-l-4 border-magenta">
+                  ⚠️ You've reached 10 published listings. Switch to "Draft" to save for later, or remove a listing.
+                </p>
+              )}
 
               {error && <p className="text-xs font-bold text-magenta">{error}</p>}
 

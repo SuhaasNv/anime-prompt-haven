@@ -1,10 +1,17 @@
-import { createFileRoute, Link, notFound } from "@tanstack/react-router";
-import { useState } from "react";
+import { createFileRoute, Link, notFound, useRouter } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Navbar } from "@/components/Navbar";
 import { SaveToCollectionModal } from "@/components/SaveToCollectionModal";
-import { getListing } from "@/lib/api/listings.functions";
+import { ReportModal } from "@/components/ReportModal";
+import { getListing, incrementViewCount, deleteListing } from "@/lib/api/listings.functions";
 import { getPrompt, PROMPTS, type Prompt } from "@/lib/mock-data";
+import { getCurrentUser } from "@/lib/api/auth.functions";
+import { isSaved, savePrompt, unsavePrompt } from "@/lib/api/saves.functions";
+import { purchaseListing, hasPurchased } from "@/lib/api/purchases.functions";
+import { listReviews, getAverageRating } from "@/lib/api/reviews.functions";
+import { getMyCredits } from "@/lib/api/credits.functions";
+import { recordCopy } from "@/lib/api/copies.functions";
 
 export const Route = createFileRoute("/prompt/$id")({
   loader: async ({ params }) => {
@@ -37,19 +44,135 @@ export const Route = createFileRoute("/prompt/$id")({
   errorComponent: () => <div className="p-10">Something glitched.</div>,
 });
 
+interface Review {
+  id: string;
+  username: string;
+  rating: number;
+  body: string;
+  createdAt: string;
+}
+
 function PromptDetail() {
+  const router = useRouter();
   const { prompt } = Route.useLoaderData() as { prompt: Prompt };
   const [modalOpen, setModalOpen] = useState(false);
+  const [reportModalOpen, setReportModalOpen] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [liked, setLiked] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [avgRating, setAvgRating] = useState<number | null>(null);
+  const [currentUser, setCurrentUser] = useState<{ id: string; username: string } | null>(null);
+  const [userCredits, setUserCredits] = useState(0);
+  const [hasOwnedListing, setHasOwnedListing] = useState(false);
+  const [buying, setBuying] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const related = PROMPTS.filter((p) => p.id !== prompt.id).slice(0, 3);
+
+  // Load initial data on mount
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        // Increment view count (fire and forget)
+        await incrementViewCount({ data: { id: prompt.id } });
+
+        // Load reviews and rating
+        const [reviewsList, rating] = await Promise.all([
+          listReviews({ data: { listingId: prompt.id } }),
+          getAverageRating({ data: { listingId: prompt.id } }),
+        ]);
+        setReviews(reviewsList as Review[]);
+        setAvgRating(rating.average);
+
+        // Load user data
+        const user = await getCurrentUser();
+        setCurrentUser(user);
+
+        if (user) {
+          // Check if user has saved this listing
+          const savedData = await isSaved({ data: { listingId: prompt.id } });
+          setSaved(savedData.saved);
+
+          // Load user credits
+          const credits = await getMyCredits();
+          setUserCredits(credits.balance);
+
+          // Check if user has purchased
+          const purchased = await hasPurchased({ data: { listingId: prompt.id } });
+          setHasOwnedListing(purchased.purchased);
+        }
+      } catch (err) {
+        console.error("Failed to load prompt details", err);
+      }
+    };
+    loadData();
+  }, [prompt.id]);
 
   const copy = () => {
     navigator.clipboard.writeText(prompt.body);
     setCopied(true);
     setTimeout(() => setCopied(false), 1800);
+    // Fire-and-forget: awards author their copy commission
+    if (prompt.id) {
+      recordCopy({ data: { listingId: prompt.id } }).catch(() => {});
+    }
   };
+
+  const handleSaveToggle = async () => {
+    if (!currentUser) {
+      router.navigate({ to: "/auth" });
+      return;
+    }
+    try {
+      if (saved) {
+        await unsavePrompt({ data: { listingId: prompt.id } });
+        setSaved(false);
+      } else {
+        await savePrompt({ data: { listingId: prompt.id } });
+        setSaved(true);
+      }
+    } catch (err) {
+      console.error("Failed to toggle save", err);
+    }
+  };
+
+  const handlePurchase = async () => {
+    if (!currentUser) {
+      router.navigate({ to: "/auth" });
+      return;
+    }
+    if (userCredits < prompt.price) {
+      alert(`Insufficient credits. You need $${prompt.price}, you have $${userCredits.toFixed(2)}.`);
+      return;
+    }
+    setBuying(true);
+    try {
+      const result = await purchaseListing({ data: { listingId: prompt.id } });
+      setUserCredits(result.newBalance);
+      setHasOwnedListing(true);
+      alert("Purchase successful! 🎉");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Purchase failed";
+      alert(message);
+    } finally {
+      setBuying(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!confirm("Are you sure you want to delete this listing?")) return;
+    setDeleting(true);
+    try {
+      await deleteListing({ data: { id: prompt.id } });
+      await router.navigate({ to: "/" });
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const isOwner = currentUser && currentUser.id === (prompt as any).userId;
 
   return (
     <div className="min-h-screen">
@@ -95,21 +218,26 @@ function PromptDetail() {
             </div>
 
             <div className="mt-8">
-              <h3 className="font-display text-2xl uppercase mb-4 border-b-2 border-ink pb-2">Reviews</h3>
+              <div className="flex justify-between items-center mb-4 border-b-2 border-ink pb-2">
+                <h3 className="font-display text-2xl uppercase">Reviews</h3>
+                {avgRating !== null && (
+                  <span className="text-accent-orange font-bold">★ {avgRating.toFixed(1)} ({reviews.length})</span>
+                )}
+              </div>
               <div className="space-y-3">
-                {[
-                  { name: "kiri_arts", text: "Absolutely cinematic. Used it for a whole zine cover.", stars: 5 },
-                  { name: "mochi_dev", text: "Color palette is *chef's kiss*. Tweaked slightly for my OC.", stars: 5 },
-                  { name: "ryo_3000", text: "Solid base prompt. Needs --ar tweak for portrait.", stars: 4 },
-                ].map((r) => (
-                  <div key={r.name} className="bg-white border-2 border-ink p-4">
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="font-bold uppercase text-sm">@{r.name}</span>
-                      <span className="text-accent-orange text-sm">{"★".repeat(r.stars)}</span>
+                {reviews.length === 0 ? (
+                  <p className="text-sm text-ink/60">No reviews yet. Be the first to share your thoughts!</p>
+                ) : (
+                  reviews.map((r) => (
+                    <div key={r.id} className="bg-white border-2 border-ink p-4">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="font-bold uppercase text-sm">@{r.username}</span>
+                        <span className="text-accent-orange text-sm">{"★".repeat(r.rating)}</span>
+                      </div>
+                      <p className="text-sm text-ink/80">{r.body}</p>
                     </div>
-                    <p className="text-sm text-ink/80">{r.text}</p>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             </div>
           </div>
@@ -134,11 +262,13 @@ function PromptDetail() {
                   </div>
                   <div>
                     <div className="font-bold uppercase text-sm">@{prompt.creator}</div>
-                    <div className="text-xs text-ink/60">Verified Creator</div>
+                    <div className="text-xs text-ink/60">Creator</div>
                   </div>
                   <div className="ml-auto text-right">
-                    <div className="text-accent-orange font-bold">★ {prompt.rating.toFixed(1)}</div>
-                    <div className="text-xs text-ink/60">{prompt.reviews} reviews</div>
+                    <div className="text-accent-orange font-bold">
+                      ★ {avgRating !== null ? avgRating.toFixed(1) : (prompt.rating?.toFixed(1) || "N/A")}
+                    </div>
+                    <div className="text-xs text-ink/60">{reviews.length} reviews</div>
                   </div>
                 </div>
 
@@ -147,35 +277,86 @@ function PromptDetail() {
                     {prompt.price === 0 ? "FREE" : `$${prompt.price}`}
                   </span>
                   <button
-                    onClick={() => setLiked((l) => !l)}
-                    aria-label="Favorite"
+                    onClick={handleSaveToggle}
+                    aria-label={saved ? "Unsave" : "Save"}
                     className="text-2xl"
                   >
                     <motion.span
-                      key={String(liked)}
-                      initial={{ scale: liked ? 0.6 : 1 }}
+                      key={String(saved)}
+                      initial={{ scale: saved ? 0.6 : 1 }}
                       animate={{ scale: 1 }}
                       transition={{ type: "spring", stiffness: 400, damping: 12 }}
                       className="inline-block"
                     >
-                      {liked ? "❤️" : "🤍"}
+                      {saved ? "❤️" : "🤍"}
                     </motion.span>
                   </button>
                 </div>
 
                 <div className="space-y-3">
-                  <button
-                    onClick={() => (prompt.price === 0 ? copy() : setModalOpen(true))}
-                    className="w-full bg-accent-orange text-white py-4 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all"
-                  >
-                    {prompt.price === 0 ? (copied ? "Copied! ✨" : "Copy & Use") : `Buy for $${prompt.price}`}
-                  </button>
+                  {prompt.price === 0 ? (
+                    <button
+                      onClick={copy}
+                      className="w-full bg-accent-orange text-white py-4 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all"
+                    >
+                      {copied ? "Copied! ✨" : "Copy & Use"}
+                    </button>
+                  ) : hasOwnedListing ? (
+                    <button
+                      onClick={copy}
+                      className="w-full bg-accent-orange text-white py-4 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all"
+                    >
+                      {copied ? "Copied! ✨" : "Copy Purchased Prompt"}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handlePurchase}
+                      disabled={buying || !currentUser}
+                      className="w-full bg-accent-orange text-white py-4 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all disabled:opacity-50"
+                    >
+                      {buying ? "Processing..." : currentUser ? `Buy for $${prompt.price}` : "Sign in to Buy"}
+                    </button>
+                  )}
+
                   <button
                     onClick={() => setModalOpen(true)}
                     className="w-full bg-white text-ink py-4 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all"
                   >
                     Save to Binder
                   </button>
+
+                  {isOwner && (
+                    <>
+                      <button
+                        onClick={() => alert("Edit feature coming soon")}
+                        className="w-full bg-holo-purple text-white py-3 font-bold uppercase border-2 border-ink text-xs shadow-[3px_3px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all"
+                      >
+                        Edit Listing
+                      </button>
+                      <button
+                        onClick={handleDelete}
+                        disabled={deleting}
+                        className="w-full bg-magenta text-white py-3 font-bold uppercase border-2 border-ink text-xs shadow-[3px_3px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all disabled:opacity-50"
+                      >
+                        {deleting ? "Deleting..." : "Delete Listing"}
+                      </button>
+                    </>
+                  )}
+
+                  {!isOwner && (
+                    <button
+                      onClick={() => {
+                        if (!currentUser) {
+                          router.navigate({ to: "/auth" });
+                          return;
+                        }
+                        setReportModalOpen(true);
+                      }}
+                      className="w-full bg-white text-magenta py-3 font-bold uppercase border-2 border-magenta text-xs shadow-[3px_3px_0_0_#d400ff] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all"
+                    >
+                      🚩 Report
+                    </button>
+                  )}
                 </div>
 
                 <div className="flex flex-wrap gap-2 mt-5 pt-5 border-t-2 border-ink">
@@ -221,6 +402,13 @@ function PromptDetail() {
         onClose={() => setModalOpen(false)}
         promptTitle={prompt.title}
         listingId={prompt.id}
+      />
+
+      <ReportModal
+        open={reportModalOpen}
+        onClose={() => setReportModalOpen(false)}
+        listingId={prompt.id}
+        listingTitle={prompt.title}
       />
     </div>
   );

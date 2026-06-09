@@ -1,12 +1,16 @@
 import { createFileRoute, Link, redirect, useRouter } from "@tanstack/react-router";
+import { computeXP, computeLevel } from "@/lib/gamification";
 import { motion } from "framer-motion";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Navbar } from "@/components/Navbar";
 import { ContributeModal } from "@/components/ContributeModal";
 import { PromptCard } from "@/components/PromptCard";
 import { CURRENT_USER_QUERY_KEY, getCurrentUser } from "@/lib/api/auth.functions";
 import { createCollection, listCollections } from "@/lib/api/collections.functions";
+import { listSavedPrompts } from "@/lib/api/saves.functions";
+import { listPurchases } from "@/lib/api/purchases.functions";
 import { PROMPTS } from "@/lib/mock-data";
+import type { Prompt } from "@/lib/mock-data";
 
 export const Route = createFileRoute("/dashboard")({
   beforeLoad: async ({ context }) => {
@@ -43,23 +47,17 @@ const colorMap = {
   purple: { bg: "bg-holo-purple", text: "text-holo-purple", shadow: "shadow-pop-purple" },
 } as const;
 
-const PURCHASED_PROMPTS = PROMPTS.filter((p) => p.price > 0);
-
 // Local view-tabs switch which section of the binder is shown below — they
 // stay on /dashboard rather than navigating, so each needs an explicit
 // onClick + active-state instead of relying on router link matching.
 const DASHBOARD_VIEWS = [
   { id: "collections", label: "Collections", icon: "📚" },
-  { id: "saved", label: "All Saved", icon: "⭐", count: PROMPTS.length },
-  { id: "purchased", label: "Purchased", icon: "💎", count: PURCHASED_PROMPTS.length },
+  { id: "saved", label: "All Saved", icon: "⭐" },
+  { id: "purchased", label: "Purchased", icon: "💎" },
 ] as const;
 
 type DashboardView = (typeof DASHBOARD_VIEWS)[number]["id"];
 
-const profileLinks = [
-  { label: "My Studio", icon: "🎨" },
-  { label: "Settings", icon: "⚙️" },
-] as const;
 
 function NewCollectionForm({ onClose }: { onClose: () => void }) {
   const router = useRouter();
@@ -84,7 +82,7 @@ function NewCollectionForm({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="border-2 border-dashed border-ink p-5 min-h-[230px] flex flex-col justify-center gap-3">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
       <div>
         <label className="text-xs font-bold uppercase tracking-widest block mb-1">Name</label>
         <input
@@ -128,66 +126,116 @@ function NewCollectionForm({ onClose }: { onClose: () => void }) {
 }
 
 function Dashboard() {
+  const router = useRouter();
   const { user, collections } = Route.useLoaderData();
   const [creating, setCreating] = useState(false);
   const [contributing, setContributing] = useState(false);
   const [activeView, setActiveView] = useState<DashboardView>("collections");
+  const [savedPrompts, setSavedPrompts] = useState<Prompt[]>([]);
+  const [purchasedPrompts, setPurchasedPrompts] = useState<Prompt[]>([]);
+  const [loadingData, setLoadingData] = useState(false);
+
+  useEffect(() => {
+    const loadData = async () => {
+      setLoadingData(true);
+      try {
+        const [saved, purchased] = await Promise.all([listSavedPrompts(), listPurchases()]);
+        setSavedPrompts(saved);
+        setPurchasedPrompts(purchased);
+      } catch (err) {
+        console.error("Failed to load dashboard data", err);
+      } finally {
+        setLoadingData(false);
+      }
+    };
+    loadData();
+  }, []);
 
   return (
     <div className="min-h-screen">
       <Navbar />
       <ContributeModal open={contributing} onClose={() => setContributing(false)} />
+      {creating && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4" role="dialog" aria-modal="true">
+          <div className="absolute inset-0 bg-ink/60" onClick={() => setCreating(false)} />
+          <div className="relative bg-white border-4 border-ink shadow-pop-lg w-full max-w-sm">
+            <div className="flex items-center justify-between p-5 border-b-4 border-ink bg-accent-yellow">
+              <h2 className="font-display text-2xl uppercase">New Collection</h2>
+              <button onClick={() => setCreating(false)} className="font-bold text-lg hover:text-magenta">✕</button>
+            </div>
+            <div className="p-5">
+              <NewCollectionForm onClose={() => setCreating(false)} />
+            </div>
+          </div>
+        </div>
+      )}
       <main className="relative z-10 px-6 md:px-12 py-10">
         <div className="grid grid-cols-12 gap-8">
           {/* Sidebar */}
           <aside className="col-span-12 md:col-span-3">
-            <div className="bg-ink text-white p-5 border-4 border-magenta sticky top-24">
-              <div className="flex items-center gap-3 pb-4 border-b-2 border-white/10">
-                <div className="size-12 rounded-full bg-magenta border-2 border-white flex items-center justify-center text-2xl">
-                  ✨
-                </div>
-                <div>
-                  <div className="font-display uppercase text-sm">{user.username}</div>
-                  <div className="text-xs text-white/50">Prompt Collector</div>
-                </div>
-              </div>
-              <nav className="mt-4 space-y-1">
+            <div className="bg-white border-4 border-ink shadow-pop-lg sticky top-24">
+              {/* Profile header */}
+              {(() => {
+                const xp = computeXP({ listingsCount: collections.length, salesCount: purchasedPrompts.length, savesReceived: savedPrompts.length, reviewsWritten: 0 });
+                const { level, xpInLevel } = computeLevel(xp);
+                return (
+                  <div className="p-5 border-b-4 border-ink bg-accent-yellow">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="size-12 rounded-full bg-white border-4 border-ink flex items-center justify-center text-2xl shadow-[3px_3px_0_0_#0a0a0c]">
+                        ✨
+                      </div>
+                      <div>
+                        <div className="font-display uppercase text-base leading-none">{user.username}</div>
+                        <div className="text-xs font-bold uppercase tracking-widest text-ink/60 mt-0.5">Lv. {level} — Prompt Collector</div>
+                      </div>
+                    </div>
+                    {/* XP progress bar */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[10px] font-mono font-bold text-ink/60">
+                        <span>XP</span>
+                        <span>{xpInLevel} / 1000</span>
+                      </div>
+                      <div className="h-2 bg-white border-2 border-ink overflow-hidden">
+                        <div
+                          className="h-full bg-magenta transition-all duration-700"
+                          style={{ width: `${Math.min((xpInLevel / 1000) * 100, 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+              {/* Nav items */}
+              <nav className="p-3 space-y-1">
                 {DASHBOARD_VIEWS.map((v) => {
                   const active = activeView === v.id;
+                  let count: number | null = null;
+                  if (v.id === "saved") count = savedPrompts.length;
+                  if (v.id === "purchased") count = purchasedPrompts.length;
+                  if (v.id === "collections") count = collections.length;
+
                   return (
                     <button
                       key={v.id}
                       type="button"
                       aria-current={active ? "true" : undefined}
                       onClick={() => setActiveView(v.id)}
-                      className={`w-full flex items-center justify-between px-3 py-2 font-bold uppercase text-xs tracking-wider transition-colors ${
-                        active ? "bg-magenta text-white" : "text-white/80 hover:bg-white/5 hover:text-magenta"
+                      className={`w-full flex items-center justify-between px-3 py-2.5 font-bold uppercase text-xs tracking-wider border-2 transition-all ${
+                        active
+                          ? "bg-magenta text-white border-ink shadow-[3px_3px_0_0_#0a0a0c] -translate-x-0.5 -translate-y-0.5"
+                          : "bg-white text-ink border-transparent hover:border-ink hover:bg-ink/5"
                       }`}
                     >
                       <span className="flex items-center gap-2">
                         <span className="text-base">{v.icon}</span>
                         {v.label}
                       </span>
-                      {"count" in v && (
-                        <span className="text-[10px] font-mono opacity-70">{v.count}</span>
+                      {count !== null && (
+                        <span className={`text-[10px] font-mono px-1.5 py-0.5 border ${active ? "border-white/40 bg-white/20" : "border-ink/20 bg-ink/5"}`}>{count}</span>
                       )}
                     </button>
                   );
                 })}
-
-                <div className="!mt-3 !mb-1 border-t border-white/10" />
-
-                {profileLinks.map((l) => (
-                  <Link
-                    key={l.label}
-                    to="/profile"
-                    className="flex items-center gap-2 px-3 py-2 font-bold uppercase text-xs tracking-wider text-white/80 hover:bg-white/5 hover:text-magenta transition-colors"
-                    activeProps={{ className: "!bg-magenta !text-white" }}
-                  >
-                    <span className="text-base">{l.icon}</span>
-                    {l.label}
-                  </Link>
-                ))}
               </nav>
             </div>
           </aside>
@@ -221,8 +269,8 @@ function Dashboard() {
             <div className="grid grid-cols-3 gap-3 mb-10">
               {[
                 { label: "Collections", value: collections.length, color: "magenta" as const },
-                { label: "Prompts", value: PROMPTS.length, color: "orange" as const },
-                { label: "This week", value: "+4", color: "yellow" as const },
+                { label: "Saved Prompts", value: savedPrompts.length, color: "orange" as const },
+                { label: "Purchased", value: purchasedPrompts.length, color: "yellow" as const },
               ].map((s) => (
                 <div key={s.label} className={`bg-white border-2 border-ink p-4 ${colorMap[s.color].shadow}`}>
                   <div className="text-xs font-bold uppercase tracking-widest text-ink/60">{s.label}</div>
@@ -245,7 +293,11 @@ function Dashboard() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: i * 0.08, type: "spring", stiffness: 240, damping: 22 }}
                   >
-                    <Link to="/dashboard/collection/$id" params={{ id: c.id }} className="block group">
+                    <Link
+                      to="/collection/$id"
+                      params={{ id: c.id }}
+                      className="block group"
+                    >
                       <div className={`bg-white border-2 border-ink p-5 ${colors.shadow} hover:rotate-[-1deg] transition-transform`}>
                         <div className="flex justify-between items-start mb-3">
                           <div>
@@ -284,17 +336,13 @@ function Dashboard() {
                 );
               })}
 
-              {creating ? (
-                <NewCollectionForm onClose={() => setCreating(false)} />
-              ) : (
-                <button
-                  onClick={() => setCreating(true)}
-                  className="border-2 border-dashed border-ink p-5 min-h-[230px] flex flex-col items-center justify-center hover:border-magenta hover:text-magenta transition-colors"
-                >
-                  <div className="text-5xl">+</div>
-                  <div className="font-display uppercase mt-2">New Collection</div>
-                </button>
-              )}
+              <button
+                onClick={() => setCreating(true)}
+                className="border-2 border-dashed border-ink p-5 min-h-[230px] flex flex-col items-center justify-center hover:border-magenta hover:text-magenta transition-colors"
+              >
+                <div className="text-5xl">+</div>
+                <div className="font-display uppercase mt-2">New Collection</div>
+              </button>
             </div>
 
             {/* Recent prompts */}
@@ -322,25 +370,40 @@ function Dashboard() {
             {activeView === "saved" && (
               <>
                 <h2 className="font-display text-2xl uppercase mb-5 border-b-4 border-ink pb-2">All Saved Prompts</h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
-                  {PROMPTS.map((p) => (
-                    <PromptCard key={p.id} prompt={p} />
-                  ))}
-                </div>
+                {loadingData ? (
+                  <div className="py-16 text-center">
+                    <p className="text-ink/60 animate-pulse">Loading your saved prompts…</p>
+                  </div>
+                ) : savedPrompts.length === 0 ? (
+                  <div className="py-16 text-center border-2 border-dashed border-ink">
+                    <p className="font-display text-2xl uppercase text-ink/40">Nothing saved yet</p>
+                    <p className="text-sm text-ink/60 mt-2">Tap the heart icon on prompts you love to save them.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
+                    {savedPrompts.map((p) => (
+                      <PromptCard key={p.id} prompt={p} />
+                    ))}
+                  </div>
+                )}
               </>
             )}
 
             {activeView === "purchased" && (
               <>
                 <h2 className="font-display text-2xl uppercase mb-5 border-b-4 border-ink pb-2">Purchased Prompts</h2>
-                {PURCHASED_PROMPTS.length === 0 ? (
+                {loadingData ? (
+                  <div className="py-16 text-center">
+                    <p className="text-ink/60 animate-pulse">Loading your purchases…</p>
+                  </div>
+                ) : purchasedPrompts.length === 0 ? (
                   <div className="py-16 text-center border-2 border-dashed border-ink">
                     <p className="font-display text-2xl uppercase text-ink/40">Nothing here yet</p>
-                    <p className="text-sm text-ink/60 mt-2">Prompts you buy will show up in this tab.</p>
+                    <p className="text-sm text-ink/60 mt-2">Browse the marketplace to find prompts to purchase.</p>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
-                    {PURCHASED_PROMPTS.map((p) => (
+                    {purchasedPrompts.map((p) => (
                       <PromptCard key={p.id} prompt={p} />
                     ))}
                   </div>

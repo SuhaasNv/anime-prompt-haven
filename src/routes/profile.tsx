@@ -5,6 +5,7 @@ import { CURRENT_USER_QUERY_KEY, getCurrentUser, setMascot } from "@/lib/api/aut
 import { MASCOTS, type MascotKey } from "@/lib/mascots";
 import { ACCENT_THEMES, applyAccentTheme, getStoredAccentTheme, persistAccentTheme, type AccentTheme } from "@/lib/theme";
 import { playTactileClick } from "@/lib/sound";
+import { computeXP, computeLevel, computeBadges } from "@/lib/gamification";
 
 export const Route = createFileRoute("/profile")({
   beforeLoad: async ({ context }) => {
@@ -85,18 +86,44 @@ function ProfilePage() {
           {/* Profile card */}
           <div className="md:col-span-1">
             <div className="bg-white border-4 border-ink p-6 shadow-pop">
+              {(() => {
+                const xp = computeXP({ listingsCount: 0, salesCount: 0, savesReceived: 0, reviewsWritten: 0 });
+                const { level, xpInLevel } = computeLevel(xp);
+                const badges = computeBadges({ listingsCount: 0, salesCount: 0, savesReceived: 0, reviewsWritten: 0 });
+                return (
               <div className="flex flex-col items-center text-center">
                 <img src={MASCOTS[companion].image} alt="Avatar" width={120} height={120} className="size-28 border-4 border-ink rounded-full bg-accent-yellow object-contain" />
                 <h2 className="font-display text-2xl uppercase mt-3">@{user.username}</h2>
-                <p className="text-xs text-ink/60 mt-1">Prompt Collector · Lv. 12</p>
-                <div className="flex gap-2 mt-3">
-                  <span className="px-2 py-1 bg-magenta text-white text-[10px] font-bold uppercase">Pro</span>
-                  <span className="px-2 py-1 bg-accent-yellow text-ink text-[10px] font-bold uppercase border border-ink">Creator</span>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="px-2 py-1 bg-accent-yellow border-2 border-ink text-[10px] font-bold uppercase">Lv. {level}</span>
+                  <span className="text-xs text-ink/60">Prompt Collector</span>
                 </div>
-                <button className="mt-5 w-full bg-ink text-white py-2 font-bold uppercase text-sm hover:bg-magenta transition-colors">
-                  Change Avatar
-                </button>
+                {/* XP bar */}
+                <div className="w-full mt-3">
+                  <div className="h-2 bg-ink/10 border border-ink overflow-hidden">
+                    <div className="h-full bg-magenta transition-all" style={{ width: `${(xpInLevel / 1000) * 100}%` }} />
+                  </div>
+                  <div className="text-[10px] font-mono text-ink/50 mt-0.5">{xpInLevel} / 1000 XP</div>
+                </div>
+                {/* Badges */}
+                <div className="flex flex-wrap gap-1.5 justify-center mt-3">
+                  {badges.map((b) => (
+                    <span
+                      key={b.id}
+                      title={b.label}
+                      className={`px-2 py-0.5 border-2 text-[10px] font-bold uppercase tracking-wide transition-all ${
+                        b.earned
+                          ? "border-ink bg-accent-yellow text-ink"
+                          : "border-ink/20 bg-ink/5 text-ink/30"
+                      }`}
+                    >
+                      {b.icon} {b.label}
+                    </span>
+                  ))}
+                </div>
               </div>
+                );
+              })()}
 
               <div className="mt-6 pt-6 border-t-2 border-ink space-y-3">
                 <Stat label="Saved" value="42" />

@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { getSessionUser } from "../auth.server";
 import { getDb } from "../db.server";
+import { sanitize } from "../sanitize";
 
 const REPORT_THRESHOLD = 5; // Auto-flag after this many reports
 
@@ -39,7 +40,7 @@ export const reportListing = createServerFn({ method: "POST" })
        VALUES ($1, $2, $3, $4)
        ON CONFLICT (reporter_id, listing_id) DO UPDATE
        SET reason = $3, note = $4`,
-      [user.id, data.listingId, data.reason, data.note || null]
+      [user.id, data.listingId, data.reason, data.note ? sanitize(data.note) : null]
     );
 
     // Check if we should auto-flag the listing

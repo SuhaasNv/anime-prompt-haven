@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Navbar } from "@/components/Navbar";
@@ -8,11 +8,13 @@ import { listCollections } from "@/lib/api/collections.functions";
 import { CATEGORIES, TAGS } from "@/lib/mock-data";
 import { MASCOTS, type MascotKey } from "@/lib/mascots";
 
+type SortOption = "newest" | "trending" | "price_asc" | "price_desc" | "rating";
+
 const MASCOT_KEYS = Object.keys(MASCOTS) as MascotKey[];
 
 export const Route = createFileRoute("/")({
   loader: async ({ context }) => {
-    const listings = await listListings();
+    const listings = await listListings({ data: { limit: 100, offset: 0 } });
     // Load current user from cache or return null if not logged in
     const user = context.queryClient.getQueryData(["current-user"]);
     let collections = [];
@@ -36,11 +38,36 @@ export const Route = createFileRoute("/")({
 });
 
 function MarketPage() {
-  const { listings, collections, user } = Route.useLoaderData();
+  const { listings: initialListings, collections, user } = Route.useLoaderData();
+  const [listings, setListings] = useState(initialListings);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
   const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [sort, setSort] = useState<SortOption>("newest");
+  const [isLoading, setIsLoading] = useState(false);
   const reduceMotion = useReducedMotion();
+
+  useEffect(() => {
+    const fetchListings = async () => {
+      setIsLoading(true);
+      try {
+        const filtered = await listListings({
+          data: {
+            sort,
+            category: category === "All" ? undefined : category,
+            limit: 100,
+            offset: 0,
+          },
+        });
+        setListings(filtered);
+      } catch (err) {
+        console.error("Failed to fetch listings", err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchListings();
+  }, [sort, category]);
 
   // Picked client-side (post-mount) so the server-rendered markup never has to
   // guess — guarantees the choice matches what the visitor actually sees and
@@ -53,14 +80,21 @@ function MarketPage() {
   const filtered = useMemo(
     () =>
       listings.filter((p) => {
-        if (category !== "All" && p.category !== category) return false;
         if (activeTag && !p.tags.includes(activeTag)) return false;
-        if (query && !`${p.title} ${p.description} ${p.username}`.toLowerCase().includes(query.toLowerCase()))
+        if (query && !`${p.title} ${p.description} ${p.creator}`.toLowerCase().includes(query.toLowerCase()))
           return false;
         return true;
       }),
-    [listings, query, category, activeTag],
+    [listings, query, activeTag],
   );
+
+  const sortLabel = {
+    newest: "New Drops",
+    trending: "Trending Now",
+    price_asc: "Budget Friendly",
+    price_desc: "Premium",
+    rating: "Top Rated",
+  }[sort];
 
   return (
     <div className="min-h-screen">
@@ -160,6 +194,20 @@ function MarketPage() {
                 );
               })}
             </div>
+
+            <div className="mt-6 flex gap-4 flex-wrap">
+              <select
+                value={sort}
+                onChange={(e) => setSort(e.target.value as SortOption)}
+                className="bg-white border-2 border-ink px-4 py-2 font-bold text-xs uppercase focus:outline-none focus:ring-4 focus:ring-magenta/30"
+              >
+                <option value="newest">Newest</option>
+                <option value="trending">Trending</option>
+                <option value="price_asc">Price: Low → High</option>
+                <option value="price_desc">Price: High → Low</option>
+                <option value="rating">Top Rated</option>
+              </select>
+            </div>
           </div>
         </section>
 
@@ -189,7 +237,10 @@ function MarketPage() {
           {/* Marketplace grid */}
           <div className="col-span-12 lg:col-span-8">
             <div className="flex justify-between items-end mb-8 border-b-4 border-ink pb-2">
-              <h2 className="font-display text-3xl md:text-4xl uppercase">Trending Prompts</h2>
+              <h2 className="font-display text-3xl md:text-4xl uppercase">
+                {sortLabel}
+                {isLoading && <span className="text-sm ml-3 text-ink/60 animate-pulse">Loading…</span>}
+              </h2>
               <span className="font-bold text-magenta text-sm">{filtered.length} RESULTS</span>
             </div>
 
@@ -292,9 +343,9 @@ function Footer() {
       <div className="flex flex-col md:flex-row justify-between items-center gap-8">
         <div className="font-display text-4xl uppercase italic">PROMPT STAR</div>
         <div className="flex gap-8 font-bold uppercase text-xs tracking-[0.2em]">
-          <a href="#" className="hover:text-magenta transition-colors">Terms</a>
-          <a href="#" className="hover:text-magenta transition-colors">Discord</a>
-          <a href="#" className="hover:text-magenta transition-colors">Twitter</a>
+          <Link to="/terms" className="hover:text-magenta transition-colors">Terms</Link>
+          <a href="https://discord.gg/promptstar" target="_blank" rel="noopener noreferrer" className="hover:text-magenta transition-colors">Discord</a>
+          <a href="https://twitter.com/promptstar" target="_blank" rel="noopener noreferrer" className="hover:text-magenta transition-colors">Twitter</a>
         </div>
         <div className="text-white/40 text-xs font-mono">© 2026 NEON BINDER CORP.</div>
       </div>

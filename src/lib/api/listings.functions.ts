@@ -3,6 +3,8 @@ import { z } from "zod";
 
 import { getSessionUser } from "../auth.server";
 import { getDb } from "../db.server";
+import { sanitize } from "../sanitize";
+import { CREDIT_RATES } from "../gamification";
 import type { Prompt } from "../mock-data";
 
 export const CURRENT_USER_QUERY_KEY = ["current-user"] as const;
@@ -199,7 +201,13 @@ export const createListing = createServerFn({ method: "POST" })
       [user.id]
     );
 
-    const tags = data.tags.map((t) => (t.startsWith("#") ? t.toUpperCase() : `#${t.toUpperCase()}`));
+    const title = sanitize(data.title);
+    const description = sanitize(data.description);
+    const body = sanitize(data.body);
+    const tags = data.tags.map((t) => {
+      const clean = sanitize(t);
+      return clean.startsWith("#") ? clean.toUpperCase() : `#${clean.toUpperCase()}`;
+    });
 
     const result = await db.query<{ id: string }>(
       `INSERT INTO prompt_listings (user_id, title, description, body, image, price, category, model, tags, is_nsfw, status)
@@ -207,12 +215,12 @@ export const createListing = createServerFn({ method: "POST" })
        RETURNING id`,
       [
         user.id,
-        data.title,
-        data.description,
-        data.body,
+        title,
+        description,
+        body,
         data.image,
         data.price,
-        data.category,
+        sanitize(data.category),
         data.model,
         tags,
         data.isNsfw,
@@ -220,7 +228,22 @@ export const createListing = createServerFn({ method: "POST" })
       ]
     );
 
-    return { id: result.rows[0].id };
+    const listingId = result.rows[0].id;
+
+    // Publish bonus: +2.00 credits to the author
+    if (data.status === "published") {
+      await db.query(
+        `INSERT INTO user_credits (user_id, balance) VALUES ($1, $2)
+         ON CONFLICT (user_id) DO UPDATE SET balance = user_credits.balance + $2, updated_at = now()`,
+        [user.id, CREDIT_RATES.publishBonus]
+      );
+      await db.query(
+        `INSERT INTO credit_transactions (user_id, amount, type, note) VALUES ($1, $2, 'bonus', 'Publish reward')`,
+        [user.id, CREDIT_RATES.publishBonus]
+      );
+    }
+
+    return { id: listingId };
   });
 
 export const deleteListing = createServerFn({ method: "POST" })
@@ -291,17 +314,17 @@ export const updateListing = createServerFn({ method: "POST" })
 
     if (data.title !== undefined) {
       updates.push(`title = $${paramIndex}`);
-      params.push(data.title);
+      params.push(sanitize(data.title));
       paramIndex++;
     }
     if (data.description !== undefined) {
       updates.push(`description = $${paramIndex}`);
-      params.push(data.description);
+      params.push(sanitize(data.description));
       paramIndex++;
     }
     if (data.body !== undefined) {
       updates.push(`body = $${paramIndex}`);
-      params.push(data.body);
+      params.push(sanitize(data.body));
       paramIndex++;
     }
     if (data.price !== undefined) {
@@ -311,7 +334,7 @@ export const updateListing = createServerFn({ method: "POST" })
     }
     if (data.category !== undefined) {
       updates.push(`category = $${paramIndex}`);
-      params.push(data.category);
+      params.push(sanitize(data.category));
       paramIndex++;
     }
     if (data.model !== undefined) {
@@ -320,7 +343,10 @@ export const updateListing = createServerFn({ method: "POST" })
       paramIndex++;
     }
     if (data.tags !== undefined) {
-      const tags = data.tags.map((t) => (t.startsWith("#") ? t.toUpperCase() : `#${t.toUpperCase()}`));
+      const tags = data.tags.map((t) => {
+        const clean = sanitize(t);
+        return clean.startsWith("#") ? clean.toUpperCase() : `#${clean.toUpperCase()}`;
+      });
       updates.push(`tags = $${paramIndex}`);
       params.push(tags);
       paramIndex++;

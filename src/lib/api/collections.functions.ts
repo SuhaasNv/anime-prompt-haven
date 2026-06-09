@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { getSessionUser } from "../auth.server";
 import { getDb } from "../db.server";
+import { sanitize } from "../sanitize";
 
 export type DbCollection = {
   id: string;
@@ -72,7 +73,7 @@ export const createCollection = createServerFn({ method: "POST" })
     const db = getDb();
     const result = await db.query<{ id: string }>(
       "INSERT INTO collections (user_id, name, vibe, color) VALUES ($1, $2, $3, $4) RETURNING id",
-      [user.id, data.name, data.vibe ?? "", data.color ?? "magenta"],
+      [user.id, sanitize(data.name), sanitize(data.vibe ?? ""), data.color ?? "magenta"],
     );
     return { id: result.rows[0].id };
   });

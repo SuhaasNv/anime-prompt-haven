@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { createSession, destroySession, getSessionUser } from "../auth.server";
 import { getDb } from "../db.server";
+import { sanitize } from "../sanitize";
 
 const PASSWORD_MIN_LENGTH = 8;
 const MASCOT_VALUES = ["nova", "comet"] as const;
@@ -32,7 +33,7 @@ export const signUp = createServerFn({ method: "POST" })
     const passwordHash = await bcrypt.hash(data.password, 10);
     const inserted = await db.query<{ id: string }>(
       "INSERT INTO users (email, username, password_hash, mascot) VALUES ($1, $2, $3, $4) RETURNING id",
-      [data.email, data.username, passwordHash, data.mascot],
+      [data.email, sanitize(data.username), passwordHash, data.mascot],
     );
 
     const userId = inserted.rows[0].id;
