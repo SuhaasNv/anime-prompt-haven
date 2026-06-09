@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useRouter, useRouterState } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CURRENT_USER_QUERY_KEY, getCurrentUser, signOut } from "@/lib/api/auth.functions";
+import { getMyCredits } from "@/lib/api/credits.functions";
 import { MASCOTS } from "@/lib/mascots";
 import { CreditBalanceWidget } from "./CreditBalanceWidget";
 import { CreditsModal } from "./CreditsModal";
@@ -18,6 +19,7 @@ export function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [creditsOpen, setCreditsOpen] = useState(false);
+  const [creditBalance, setCreditBalance] = useState<number | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   // Cached under a stable key in the app-wide QueryClient (which outlives any
@@ -31,6 +33,11 @@ export function Navbar() {
     queryFn: getCurrentUser,
     staleTime: 60_000,
   });
+
+  useEffect(() => {
+    if (!user) return;
+    getMyCredits().then((c) => setCreditBalance(c.balance)).catch(() => {});
+  }, [user]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -85,7 +92,7 @@ export function Navbar() {
 
         {user ? (
           <div className="flex items-center gap-4">
-            <CreditBalanceWidget onOpen={() => setCreditsOpen(true)} />
+            <CreditBalanceWidget balance={creditBalance} onOpen={() => setCreditsOpen(true)} />
             <div ref={menuRef} className="relative">
               <button
                 onClick={() => setMenuOpen((o) => !o)}
@@ -141,7 +148,7 @@ export function Navbar() {
         )}
       </div>
     </nav>
-    <CreditsModal open={creditsOpen} onClose={() => setCreditsOpen(false)} />
+    <CreditsModal open={creditsOpen} onClose={() => setCreditsOpen(false)} onBalanceChange={setCreditBalance} />
     </>
   );
 }

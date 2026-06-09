@@ -137,7 +137,7 @@ function Dashboard() {
   const [savedPrompts, setSavedPrompts] = useState<Prompt[]>([]);
   const [purchasedPrompts, setPurchasedPrompts] = useState<Prompt[]>([]);
   const [myListings, setMyListings] = useState<MyListing[]>([]);
-  const [loadingData, setLoadingData] = useState(false);
+  const [loadingData, setLoadingData] = useState(true);
   const [gamificationStats, setGamificationStats] = useState<GamificationStats>({ listingsCount: 0, salesCount: 0, savesReceived: 0, reviewsWritten: 0 });
 
   useEffect(() => {

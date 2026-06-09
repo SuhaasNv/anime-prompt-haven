@@ -22,9 +22,10 @@ const TYPE_LABELS: Record<string, { label: string; color: string }> = {
 interface CreditsModalProps {
   open: boolean;
   onClose: () => void;
+  onBalanceChange?: (newBalance: number) => void;
 }
 
-export function CreditsModal({ open, onClose }: CreditsModalProps) {
+export function CreditsModal({ open, onClose, onBalanceChange }: CreditsModalProps) {
   const [balance, setBalance] = useState<number | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,6 +53,7 @@ export function CreditsModal({ open, onClose }: CreditsModalProps) {
     try {
       const result = await topUpCredits();
       setBalance(result.newBalance);
+      onBalanceChange?.(result.newBalance);
       const txns = await listTransactions();
       setTransactions(txns as Transaction[]);
     } catch {

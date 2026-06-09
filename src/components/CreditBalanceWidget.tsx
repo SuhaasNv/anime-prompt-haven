@@ -1,30 +1,11 @@
-import { useEffect, useState } from "react";
-import { getMyCredits } from "@/lib/api/credits.functions";
-
 interface CreditBalanceWidgetProps {
+  balance: number | null;
   className?: string;
   onOpen?: () => void;
 }
 
-export function CreditBalanceWidget({ className = "", onOpen }: CreditBalanceWidgetProps) {
-  const [balance, setBalance] = useState(0);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const loadBalance = async () => {
-      try {
-        const credits = await getMyCredits();
-        setBalance(credits.balance);
-      } catch (err) {
-        console.error("Failed to load credits", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadBalance();
-  }, []);
-
-  if (loading) {
+export function CreditBalanceWidget({ balance, className = "", onOpen }: CreditBalanceWidgetProps) {
+  if (balance === null) {
     return <div className={`text-xs font-mono ${className}`}>…</div>;
   }
 
