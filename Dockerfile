@@ -23,8 +23,13 @@ COPY --from=builder /app/db ./db
 COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/package.json ./package.json
 
-# Install only what's needed to run migrations (pg driver)
-RUN npm install --omit=dev pg 2>/dev/null || true
+# Copy pg and its dependencies from builder — needed only for migrate.mjs
+COPY --from=builder /app/node_modules/pg ./node_modules/pg
+COPY --from=builder /app/node_modules/pg-pool ./node_modules/pg-pool
+COPY --from=builder /app/node_modules/pg-connection-string ./node_modules/pg-connection-string
+COPY --from=builder /app/node_modules/pg-protocol ./node_modules/pg-protocol
+COPY --from=builder /app/node_modules/pg-int8 ./node_modules/pg-int8
+COPY --from=builder /app/node_modules/pgpass ./node_modules/pgpass
 
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh

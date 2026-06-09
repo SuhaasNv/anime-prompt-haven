@@ -9,3 +9,7 @@ dist
 .gitignore
 README.md
 docs
+.claude
+IMPLEMENTATION_CHECKLIST.md
+.vscode
+.DS_Store
