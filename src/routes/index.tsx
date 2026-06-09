@@ -291,12 +291,22 @@ function MarketPage() {
                 </p>
                 <p className="text-sm text-ink/60 mt-2">
                   {listings.length === 0 ? (
-                    <>
-                      Sign in and share your best prompts with the community.{" "}
-                      <a href="/auth" className="text-magenta underline">
-                        Create an account
-                      </a>
-                    </>
+                    user ? (
+                      <>
+                        Head to your{" "}
+                        <a href="/dashboard" className="text-magenta underline">
+                          Binder
+                        </a>{" "}
+                        and publish your first prompt.
+                      </>
+                    ) : (
+                      <>
+                        Share your best prompts with the community.{" "}
+                        <a href="/auth?mode=signup" className="text-magenta underline">
+                          Create an account
+                        </a>
+                      </>
+                    )
                   ) : (
                     "Try a different vibe."
                   )}
