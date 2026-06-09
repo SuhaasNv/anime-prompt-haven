@@ -80,53 +80,31 @@
 
 ---
 
-## Phase 3: Server Functions
+## Phase 3: Server Functions ✅ COMPLETE
 
-### 3A. Update listings.functions.ts
-- [ ] Update `listListings()` signature:
-  - Add `showNsfw?: boolean` (default false)
-  - Add `sort?: 'newest' | 'trending' | 'price_asc' | 'price_desc' | 'rating'`
-  - Add `category?, model?, tags?, search?, maxPrice?, minPrice?, limit?, offset?`
-- [ ] Add WHERE clause: `status = 'published'`
-- [ ] Add NSFW filter: `AND (is_nsfw = false OR is_nsfw = true)` based on `showNsfw`
-- [ ] Add pagination: `LIMIT 24 OFFSET $n`
-- [ ] Add trending sort: `ORDER BY (view_count * 0.2 + purchase_count * 2.0 + save_count * 0.8) DESC`
-- [ ] Add `deleteListing()` fn: sets `status = 'removed'`, owner/admin only
-- [ ] Add `updateListing()` fn: edits title/desc/body/price/category/model/tags/is_nsfw/status, owner only, blocks `is_nsfw: true → false`
-- [ ] Add `incrementViewCount()` fn: fire-and-forget POST
-- [ ] Update `createListing()` signature:
-  - Add `is_nsfw: boolean` param
-  - Add `status: z.enum(['draft', 'published'])` param
-  - Add listing cap check: throw if user has ≥10 active listings
-  - Add max price cap: $49.99
-- [ ] Test: `npm run build` passes
+All 7 new server function files created and tested:
 
-### 3B. Create saves.functions.ts
-- [ ] New file: `src/lib/api/saves.functions.ts`
-- [ ] `savePrompt()` — POST, auth required
-  - `INSERT INTO saved_prompts ... ON CONFLICT DO NOTHING`
-  - `UPDATE prompt_listings SET save_count = save_count + 1`
-  - Return `{ ok: true }`
-- [ ] `unsavePrompt()` — POST, auth required
-  - `DELETE FROM saved_prompts WHERE user_id=$1 AND listing_id=$2`
-  - `UPDATE prompt_listings SET save_count = save_count - 1`
-  - Return `{ ok: true }`
-- [ ] `listSavedPrompts()` — GET, auth required
-  - JOIN `saved_prompts` with `prompt_listings`
-  - Return array of full listings
-- [ ] `isSaved()` — GET, auth required
-  - Return `{ saved: boolean }`
-- [ ] Test: `npm run build` passes
+### 3A. Update listings.functions.ts ✓
+- [x] Update `listListings()` with filtering/sorting/pagination
+- [x] Add `deleteListing()` — soft delete (status = 'removed')
+- [x] Add `updateListing()` — owner can edit, blocks is_nsfw downgrade
+- [x] Add `incrementViewCount()` — fire-and-forget
+- [x] Update `createListing()` with is_nsfw, status, listing cap, max price
+- [x] Export CURRENT_USER_QUERY_KEY
+- [x] Build verification: ✓ compiled successfully
 
-### 3C. Create purchases.functions.ts
-- [ ] New file: `src/lib/api/purchases.functions.ts`
-- [ ] `purchaseListing()` — POST, auth required, **ATOMIC TRANSACTION**
-  - Validate listing exists, published, price > 0, not owned by buyer
-  - Check buyer balance >= price
-  - Wrap in transaction:
-    - `INSERT INTO purchases`
-    - `UPDATE user_credits SET balance -= price` (buyer)
-    - `UPDATE user_credits SET balance += (price * 0.8)` (seller)
+### 3B. Create saves.functions.ts ✓
+- [x] `savePrompt()` — INSERT + increment save_count
+- [x] `unsavePrompt()` — DELETE + decrement save_count
+- [x] `listSavedPrompts()` — JOIN query, returns full listings
+- [x] `isSaved()` — returns { saved: boolean }
+- [x] Build verification: ✓ compiled successfully
+
+### 3C. Create purchases.functions.ts ✓
+- [x] `purchaseListing()` — ATOMIC TRANSACTION (BEGIN/COMMIT/ROLLBACK)
+  - Validates: published, price > 0, not own listing, sufficient balance
+  - Inserts purchase record
+  - Updates buyer balance (-price)
     - `INSERT INTO credit_transactions` × 2
     - `UPDATE prompt_listings SET purchase_count += 1`
   - Return `{ ok: true, newBalance: number }`

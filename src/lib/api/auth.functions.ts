@@ -35,7 +35,21 @@ export const signUp = createServerFn({ method: "POST" })
       [data.email, data.username, passwordHash, data.mascot],
     );
 
-    await createSession(inserted.rows[0].id);
+    const userId = inserted.rows[0].id;
+
+    // Initialize user credits with welcome bonus
+    await db.query(
+      "INSERT INTO user_credits (user_id, balance) VALUES ($1, 5.00)",
+      [userId]
+    );
+
+    // Log the welcome bonus
+    await db.query(
+      "INSERT INTO credit_transactions (user_id, amount, type, note) VALUES ($1, 5.00, 'bonus', 'Welcome bonus')",
+      [userId]
+    );
+
+    await createSession(userId);
     return { ok: true as const };
   });
 
