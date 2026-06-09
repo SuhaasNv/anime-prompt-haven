@@ -370,6 +370,35 @@ export const updateListing = createServerFn({ method: "POST" })
     return { ok: true as const };
   });
 
+export const getMyStats = createServerFn({ method: "GET" })
+  .handler(async () => {
+    const user = await getSessionUser();
+    if (!user) return { listingsCount: 0, salesCount: 0, savesReceived: 0, copyCount: 0 };
+
+    const db = getDb();
+    const result = await db.query<{
+      listings_count: string;
+      sales_count: string;
+      saves_received: string;
+      copy_count: string;
+    }>(
+      `SELECT
+         (SELECT COUNT(*) FROM prompt_listings WHERE user_id = $1 AND status != 'removed') AS listings_count,
+         (SELECT COUNT(*) FROM purchases p JOIN prompt_listings pl ON pl.id = p.listing_id WHERE pl.user_id = $1) AS sales_count,
+         (SELECT COALESCE(SUM(save_count), 0) FROM prompt_listings WHERE user_id = $1) AS saves_received,
+         (SELECT COALESCE(SUM(copy_count), 0) FROM prompt_listings WHERE user_id = $1) AS copy_count`,
+      [user.id]
+    );
+
+    const row = result.rows[0];
+    return {
+      listingsCount: parseInt(row.listings_count),
+      salesCount: parseInt(row.sales_count),
+      savesReceived: parseInt(row.saves_received),
+      copyCount: parseInt(row.copy_count),
+    };
+  });
+
 export const incrementViewCount = createServerFn({ method: "POST" })
   .validator(z.object({ id: z.string().uuid() }))
   .handler(async ({ data }) => {

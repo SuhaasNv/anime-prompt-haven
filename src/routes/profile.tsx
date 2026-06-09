@@ -5,7 +5,8 @@ import { CURRENT_USER_QUERY_KEY, getCurrentUser, setMascot } from "@/lib/api/aut
 import { MASCOTS, type MascotKey } from "@/lib/mascots";
 import { ACCENT_THEMES, applyAccentTheme, getStoredAccentTheme, persistAccentTheme, type AccentTheme } from "@/lib/theme";
 import { playTactileClick } from "@/lib/sound";
-import { computeXP, computeLevel, computeBadges } from "@/lib/gamification";
+import { computeXP, computeLevel, computeBadges, type GamificationStats } from "@/lib/gamification";
+import { getMyStats } from "@/lib/api/listings.functions";
 
 export const Route = createFileRoute("/profile")({
   beforeLoad: async ({ context }) => {
@@ -49,6 +50,11 @@ function ProfilePage() {
   const [fontSize, setFontSize] = useState(16);
   const [companion, setCompanion] = useState<MascotKey>(user.mascot);
   const [savingCompanion, setSavingCompanion] = useState(false);
+  const [stats, setStats] = useState<GamificationStats>(stats);
+
+  useEffect(() => {
+    getMyStats().then((s) => setStats({ listingsCount: s.listingsCount, salesCount: s.salesCount, savesReceived: s.savesReceived, reviewsWritten: 0 }));
+  }, []);
 
   const handlePickTheme = (key: AccentTheme) => {
     if (key === theme) return;
@@ -87,9 +93,9 @@ function ProfilePage() {
           <div className="md:col-span-1">
             <div className="bg-white border-4 border-ink p-6 shadow-pop">
               {(() => {
-                const xp = computeXP({ listingsCount: 0, salesCount: 0, savesReceived: 0, reviewsWritten: 0 });
+                const xp = computeXP(stats);
                 const { level, xpInLevel } = computeLevel(xp);
-                const badges = computeBadges({ listingsCount: 0, salesCount: 0, savesReceived: 0, reviewsWritten: 0 });
+                const badges = computeBadges(stats);
                 return (
               <div className="flex flex-col items-center text-center">
                 <img src={MASCOTS[companion].image} alt="Avatar" width={120} height={120} className="size-28 border-4 border-ink rounded-full bg-accent-yellow object-contain" />

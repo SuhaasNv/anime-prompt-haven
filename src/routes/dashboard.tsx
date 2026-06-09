@@ -9,6 +9,8 @@ import { CURRENT_USER_QUERY_KEY, getCurrentUser } from "@/lib/api/auth.functions
 import { createCollection, listCollections } from "@/lib/api/collections.functions";
 import { listSavedPrompts } from "@/lib/api/saves.functions";
 import { listPurchases } from "@/lib/api/purchases.functions";
+import { getMyStats } from "@/lib/api/listings.functions";
+import type { GamificationStats } from "@/lib/gamification";
 import { PROMPTS } from "@/lib/mock-data";
 import type { Prompt } from "@/lib/mock-data";
 
@@ -134,14 +136,16 @@ function Dashboard() {
   const [savedPrompts, setSavedPrompts] = useState<Prompt[]>([]);
   const [purchasedPrompts, setPurchasedPrompts] = useState<Prompt[]>([]);
   const [loadingData, setLoadingData] = useState(false);
+  const [gamificationStats, setGamificationStats] = useState<GamificationStats>({ listingsCount: 0, salesCount: 0, savesReceived: 0, reviewsWritten: 0 });
 
   useEffect(() => {
     const loadData = async () => {
       setLoadingData(true);
       try {
-        const [saved, purchased] = await Promise.all([listSavedPrompts(), listPurchases()]);
+        const [saved, purchased, myStats] = await Promise.all([listSavedPrompts(), listPurchases(), getMyStats()]);
         setSavedPrompts(saved);
         setPurchasedPrompts(purchased);
+        setGamificationStats({ listingsCount: myStats.listingsCount, salesCount: myStats.salesCount, savesReceived: myStats.savesReceived, reviewsWritten: 0 });
       } catch (err) {
         console.error("Failed to load dashboard data", err);
       } finally {
@@ -176,7 +180,7 @@ function Dashboard() {
             <div className="bg-white border-4 border-ink shadow-pop-lg sticky top-24">
               {/* Profile header */}
               {(() => {
-                const xp = computeXP({ listingsCount: collections.length, salesCount: purchasedPrompts.length, savesReceived: savedPrompts.length, reviewsWritten: 0 });
+                const xp = computeXP(gamificationStats);
                 const { level, xpInLevel } = computeLevel(xp);
                 return (
                   <div className="p-5 border-b-4 border-ink bg-accent-yellow">
