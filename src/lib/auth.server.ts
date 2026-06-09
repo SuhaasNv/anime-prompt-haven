@@ -14,6 +14,7 @@ export type SessionUser = {
   email: string;
   username: string;
   mascot: Mascot;
+  is_admin: boolean;
 };
 
 export async function createSession(userId: string, remember = true): Promise<void> {
@@ -49,7 +50,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   if (!token) return null;
 
   const result = await getDb().query<SessionUser>(
-    `SELECT users.id, users.email, users.username, users.mascot
+    `SELECT users.id, users.email, users.username, users.mascot, users.is_admin
      FROM sessions
      JOIN users ON users.id = sessions.user_id
      WHERE sessions.token = $1 AND sessions.expires_at > now()`,

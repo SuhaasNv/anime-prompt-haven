@@ -10,7 +10,12 @@ export function getDb(): Pool {
     if (!databaseUrl) {
       throw new Error("DATABASE_URL is not set — cannot connect to Postgres.");
     }
-    pool = new Pool({ connectionString: databaseUrl, max: 5 });
+    pool = new Pool({
+      connectionString: databaseUrl,
+      max: 20,
+      idleTimeoutMillis: 30_000,
+      connectionTimeoutMillis: 5_000,
+    });
   }
   return pool;
 }

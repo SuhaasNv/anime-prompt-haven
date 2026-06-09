@@ -11,16 +11,14 @@ export const savePrompt = createServerFn({ method: "POST" })
 
     const db = getDb();
 
-    // Insert into saved_prompts (ON CONFLICT DO NOTHING prevents duplicates)
+    // Insert and only increment the counter if a new row was actually created
     await db.query(
-      "INSERT INTO saved_prompts (user_id, listing_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+      `WITH ins AS (
+         INSERT INTO saved_prompts (user_id, listing_id) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING id
+       )
+       UPDATE prompt_listings SET save_count = save_count + 1
+       WHERE id = $2 AND EXISTS (SELECT 1 FROM ins)`,
       [user.id, data.listingId]
-    );
-
-    // Increment save_count on the listing
-    await db.query(
-      "UPDATE prompt_listings SET save_count = save_count + 1 WHERE id = $1",
-      [data.listingId]
     );
 
     return { ok: true as const };

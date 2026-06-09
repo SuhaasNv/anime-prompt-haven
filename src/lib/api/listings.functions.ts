@@ -119,7 +119,7 @@ export const listListings = createServerFn({ method: "GET" })
         orderBy = "prompt_listings.price DESC";
         break;
       case "rating":
-        orderBy = "(SELECT AVG(rating) FROM reviews WHERE reviews.listing_id = prompt_listings.id) DESC";
+        orderBy = "COALESCE(avg_r.avg_rating, 0) DESC";
         break;
       default:
         orderBy = "prompt_listings.created_at DESC";
@@ -130,9 +130,13 @@ export const listListings = createServerFn({ method: "GET" })
     const limit = data.limit;
 
     const result = await db.query<ListingRow>(
-      `SELECT ${LISTING_COLUMNS}
+      `WITH avg_r AS (
+         SELECT listing_id, AVG(rating) AS avg_rating FROM reviews GROUP BY listing_id
+       )
+       SELECT ${LISTING_COLUMNS}
        FROM prompt_listings
        JOIN users ON users.id = prompt_listings.user_id
+       LEFT JOIN avg_r ON avg_r.listing_id = prompt_listings.id
        WHERE ${whereClause}
        ORDER BY ${orderBy}
        LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
@@ -453,6 +457,8 @@ export const listMyListings = createServerFn({ method: "GET" })
 export const incrementViewCount = createServerFn({ method: "POST" })
   .validator(z.object({ id: z.string().uuid() }))
   .handler(async ({ data }) => {
+    const user = await getSessionUser();
+    if (!user) return { ok: true as const };
     const db = getDb();
     await db.query(
       "UPDATE prompt_listings SET view_count = view_count + 1 WHERE id = $1",
