@@ -57,6 +57,9 @@ const MOODS = [
 ] as const;
 
 export const Route = createFileRoute("/auth")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    mode: (search.mode === "signup" ? "signup" : "signin") as "signin" | "signup",
+  }),
   head: () => ({
     meta: [
       { title: "Sign in — PromptStar" },
@@ -72,7 +75,8 @@ function AuthPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const reduceMotion = useReducedMotion();
-  const [mode, setMode] = useState<Mode>("signin");
+  const { mode: initialMode } = Route.useSearch();
+  const [mode, setMode] = useState<Mode>(initialMode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("");

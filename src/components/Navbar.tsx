@@ -140,6 +140,7 @@ export function Navbar() {
             </Link>
             <Link
               to="/auth"
+              search={{ mode: "signup" }}
               className="bg-accent-orange text-white px-5 py-2 font-display uppercase tracking-wide border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all"
             >
               Join the Verse
