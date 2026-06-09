@@ -17,6 +17,20 @@ services:
       timeout: 5s
       retries: 5
 
+  app:
+    image: suhaasnv/promptstar:latest
+    container_name: promptstar-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgres://postgres:localdev@postgres:5432/promptstar
+      SESSION_SECRET: ${SESSION_SECRET:-change-me-in-production}
+      PORT: 3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   anime-prompt-haven-postgres-data:
     name: anime-prompt-haven-postgres-data
