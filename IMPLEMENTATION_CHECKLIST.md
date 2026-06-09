@@ -38,11 +38,18 @@
 - [x] Build verification: ✓ compiled successfully
 
 ### 1D. Prepare for saved/purchased tabs (Phase 2)
-- [ ] Note: Requires `saved_prompts` and `purchases` tables
-- [ ] Mark as "BLOCKED on Phase 2 schema"
-- [ ] Document what needs to change:
+- [x] Note: Requires `saved_prompts` and `purchases` tables
+- [x] Mark as "BLOCKED on Phase 2 schema"
+- [x] Document what needs to change:
   - `src/routes/dashboard.tsx` saved tab: `listSavedPrompts()` call
   - `src/routes/dashboard.tsx` purchased tab: `listPurchases()` call
+  
+**Phase 1 Summary:**
+- Market feed: now DB-only, no mock merge ✓
+- Sidebar collections: now real/dynamic ✓
+- Save to collection: now saves to DB ✓
+- Collection detail: resolves both DB and mock prompts ✓
+- **Status:** Ready for Phase 2 schema work
 
 ---
 
