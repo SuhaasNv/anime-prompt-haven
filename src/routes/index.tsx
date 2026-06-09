@@ -4,15 +4,27 @@ import { motion, useReducedMotion } from "framer-motion";
 import { Navbar } from "@/components/Navbar";
 import { PromptCard } from "@/components/PromptCard";
 import { listListings } from "@/lib/api/listings.functions";
-import { CATEGORIES, COLLECTIONS, PROMPTS, TAGS } from "@/lib/mock-data";
+import { listCollections } from "@/lib/api/collections.functions";
+import { CATEGORIES, TAGS } from "@/lib/mock-data";
 import { MASCOTS, type MascotKey } from "@/lib/mascots";
 
 const MASCOT_KEYS = Object.keys(MASCOTS) as MascotKey[];
 
 export const Route = createFileRoute("/")({
-  loader: async () => {
+  loader: async ({ context }) => {
     const listings = await listListings();
-    return { listings };
+    // Load current user from cache or return null if not logged in
+    const user = context.queryClient.getQueryData(["current-user"]);
+    let collections = [];
+    if (user) {
+      try {
+        collections = await listCollections();
+      } catch {
+        // User may have logged out or session expired
+        collections = [];
+      }
+    }
+    return { listings, collections, user };
   },
   head: () => ({
     meta: [
@@ -24,8 +36,7 @@ export const Route = createFileRoute("/")({
 });
 
 function MarketPage() {
-  const { listings } = Route.useLoaderData();
-  const allPrompts = useMemo(() => [...listings, ...PROMPTS], [listings]);
+  const { listings, collections, user } = Route.useLoaderData();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
   const [activeTag, setActiveTag] = useState<string | null>(null);
@@ -41,14 +52,14 @@ function MarketPage() {
 
   const filtered = useMemo(
     () =>
-      allPrompts.filter((p) => {
+      listings.filter((p) => {
         if (category !== "All" && p.category !== category) return false;
         if (activeTag && !p.tags.includes(activeTag)) return false;
-        if (query && !`${p.title} ${p.description} ${p.creator}`.toLowerCase().includes(query.toLowerCase()))
+        if (query && !`${p.title} ${p.description} ${p.username}`.toLowerCase().includes(query.toLowerCase()))
           return false;
         return true;
       }),
-    [allPrompts, query, category, activeTag],
+    [listings, query, category, activeTag],
   );
 
   return (
@@ -184,8 +195,21 @@ function MarketPage() {
 
             {filtered.length === 0 ? (
               <div className="py-20 text-center border-2 border-dashed border-ink">
-                <p className="font-display text-2xl uppercase text-ink/40">No prompts found</p>
-                <p className="text-sm text-ink/60 mt-2">Try a different vibe.</p>
+                <p className="font-display text-2xl uppercase text-ink/40">
+                  {listings.length === 0 ? "Be the first to contribute!" : "No prompts found"}
+                </p>
+                <p className="text-sm text-ink/60 mt-2">
+                  {listings.length === 0 ? (
+                    <>
+                      Sign in and share your best prompts with the community.{" "}
+                      <a href="/auth" className="text-magenta underline">
+                        Create an account
+                      </a>
+                    </>
+                  ) : (
+                    "Try a different vibe."
+                  )}
+                </p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -204,44 +228,53 @@ function MarketPage() {
                 My Binder
               </h2>
 
-              <div className="space-y-5">
-                {COLLECTIONS.map((c) => {
-                  const colorMap = {
-                    magenta: { text: "text-magenta", bg: "bg-magenta" },
-                    yellow: { text: "text-accent-yellow", bg: "bg-accent-yellow" },
-                    orange: { text: "text-accent-orange", bg: "bg-accent-orange" },
-                    purple: { text: "text-holo-purple", bg: "bg-holo-purple" },
-                  } as const;
-                  const colors = colorMap[c.color];
-                  return (
-                    <div key={c.id} className="group cursor-pointer">
-                      <div className="flex justify-between items-end mb-2">
-                        <span className={`font-bold uppercase tracking-widest text-sm ${colors.text}`}>
-                          {c.name}
-                        </span>
-                        <span className="text-xs font-mono">
-                          {String(c.promptIds.length).padStart(2, "0")} ITEMS
-                        </span>
+              {user && collections.length > 0 ? (
+                <div className="space-y-5">
+                  {collections.map((c) => {
+                    const colorMap = {
+                      magenta: { text: "text-magenta", bg: "bg-magenta" },
+                      yellow: { text: "text-accent-yellow", bg: "bg-accent-yellow" },
+                      orange: { text: "text-accent-orange", bg: "bg-accent-orange" },
+                      purple: { text: "text-holo-purple", bg: "bg-holo-purple" },
+                    } as const;
+                    const colors = colorMap[c.color] || colorMap.magenta;
+                    const progress = c.promptIds.length > 0 ? Math.min(100, (c.promptIds.length / 10) * 100) : 0;
+                    return (
+                      <div key={c.id} className="group cursor-pointer">
+                        <div className="flex justify-between items-end mb-2">
+                          <span className={`font-bold uppercase tracking-widest text-sm ${colors.text}`}>
+                            {c.name}
+                          </span>
+                          <span className="text-xs font-mono">
+                            {String(c.promptIds.length).padStart(2, "0")} ITEMS
+                          </span>
+                        </div>
+                        <div className="h-3 w-full bg-white/10 overflow-hidden border border-white/20">
+                          <motion.div
+                            initial={{ width: 0 }}
+                            whileInView={{ width: `${progress}%` }}
+                            viewport={{ once: true }}
+                            transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
+                            className={`h-full ${colors.bg}`}
+                          />
+                        </div>
                       </div>
-                      <div className="h-3 w-full bg-white/10 overflow-hidden border border-white/20">
-                        <motion.div
-                          initial={{ width: 0 }}
-                          whileInView={{ width: `${c.progress}%` }}
-                          viewport={{ once: true }}
-                          transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
-                          className={`h-full ${colors.bg}`}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="py-8 text-center">
+                  <p className="text-sm text-white/70 mb-4">
+                    {user ? "Start collecting your favorite prompts!" : "Sign in to create collections"}
+                  </p>
+                </div>
+              )}
 
               <a
                 href="/dashboard"
                 className="block text-center w-full mt-8 py-3 border-2 border-white font-bold uppercase hover:bg-white hover:text-ink transition-all"
               >
-                Enter Private Vault
+                {user ? "Enter Private Vault" : "Sign In"}
               </a>
             </div>
           </aside>
