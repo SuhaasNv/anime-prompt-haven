@@ -1,7 +1,7 @@
 import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Navbar } from "@/components/Navbar";
-import { CURRENT_USER_QUERY_KEY, getCurrentUser, setMascot } from "@/lib/api/auth.functions";
+import { CURRENT_USER_QUERY_KEY, getCurrentUser, setMascot, updateBio } from "@/lib/api/auth.functions";
 import { MASCOTS, type MascotKey } from "@/lib/mascots";
 import { ACCENT_THEMES, applyAccentTheme, getStoredAccentTheme, persistAccentTheme, type AccentTheme } from "@/lib/theme";
 import { playTactileClick } from "@/lib/sound";
@@ -45,9 +45,19 @@ function ProfilePage() {
 
   useEffect(() => {
     setTheme(getStoredAccentTheme());
+    const storedAnim = localStorage.getItem("anim_level");
+    if (storedAnim && (animationLevels as readonly string[]).includes(storedAnim)) {
+      setAnimLevel(storedAnim as (typeof animationLevels)[number]);
+    }
+    const storedFont = localStorage.getItem("font_size");
+    if (storedFont) setFontSize(Number(storedFont));
+    const storedBio = localStorage.getItem("profile_bio");
+    if (storedBio) setBio(storedBio);
   }, []);
   const [animLevel, setAnimLevel] = useState<(typeof animationLevels)[number]>("High");
   const [fontSize, setFontSize] = useState(16);
+  const [bio, setBio] = useState("");
+  const [savingBio, setSavingBio] = useState(false);
   const [companion, setCompanion] = useState<MascotKey>(user.mascot);
   const [savingCompanion, setSavingCompanion] = useState(false);
   const [stats, setStats] = useState<GamificationStats>({ listingsCount: 0, salesCount: 0, savesReceived: 0, reviewsWritten: 0 });
@@ -55,6 +65,28 @@ function ProfilePage() {
   useEffect(() => {
     getMyStats().then((s) => setStats({ listingsCount: s.listingsCount, salesCount: s.salesCount, savesReceived: s.savesReceived, reviewsWritten: 0 }));
   }, []);
+
+  const handlePickAnim = (lvl: (typeof animationLevels)[number]) => {
+    setAnimLevel(lvl);
+    localStorage.setItem("anim_level", lvl);
+  };
+
+  const handleFontChange = (size: number) => {
+    setFontSize(size);
+    localStorage.setItem("font_size", String(size));
+  };
+
+  const handleSaveBio = async () => {
+    setSavingBio(true);
+    try {
+      await updateBio({ data: { bio } });
+      localStorage.setItem("profile_bio", bio);
+    } catch {
+      // ignore
+    } finally {
+      setSavingBio(false);
+    }
+  };
 
   const handlePickTheme = (key: AccentTheme) => {
     if (key === theme) return;
@@ -143,10 +175,24 @@ function ProfilePage() {
           <div className="md:col-span-2 space-y-6">
             <Section title="Bio">
               <textarea
-                defaultValue="Collecting prompts across every style — cyberpunk, concept art, anime, and beyond."
+                value={bio}
+                onChange={(e) => setBio(e.target.value)}
                 rows={3}
+                maxLength={300}
+                placeholder="Collecting prompts across every style — cyberpunk, concept art, anime, and beyond."
                 className="w-full bg-white border-2 border-ink p-3 font-medium focus:outline-none focus:ring-4 focus:ring-magenta/30"
               />
+              <div className="flex justify-between items-center mt-2">
+                <span className="text-[10px] text-ink/40 font-mono">{bio.length}/300</span>
+                <button
+                  type="button"
+                  onClick={handleSaveBio}
+                  disabled={savingBio}
+                  className="px-4 py-1.5 bg-magenta text-white font-bold uppercase text-xs border-2 border-ink shadow-[3px_3px_0_0_#0a0a0c] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all disabled:opacity-50"
+                >
+                  {savingBio ? "Saving…" : "Save Bio"}
+                </button>
+              </div>
             </Section>
 
             <Section title="Accent Theme">
@@ -207,7 +253,7 @@ function ProfilePage() {
                 {animationLevels.map((lvl) => (
                   <button
                     key={lvl}
-                    onClick={() => setAnimLevel(lvl)}
+                    onClick={() => handlePickAnim(lvl)}
                     className={`flex-1 py-3 border-2 border-ink font-bold uppercase text-sm transition-all ${
                       animLevel === lvl ? "bg-ink text-white shadow-[4px_4px_0_0_#d400ff]" : "bg-white hover:bg-accent-yellow"
                     }`}
@@ -224,7 +270,7 @@ function ProfilePage() {
                 min={14}
                 max={20}
                 value={fontSize}
-                onChange={(e) => setFontSize(Number(e.target.value))}
+                onChange={(e) => handleFontChange(Number(e.target.value))}
                 className="w-full accent-magenta"
               />
             </Section>

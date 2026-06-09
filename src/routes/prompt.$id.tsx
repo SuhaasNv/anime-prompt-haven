@@ -4,12 +4,12 @@ import { motion } from "framer-motion";
 import { Navbar } from "@/components/Navbar";
 import { SaveToCollectionModal } from "@/components/SaveToCollectionModal";
 import { ReportModal } from "@/components/ReportModal";
-import { getListing, incrementViewCount, deleteListing } from "@/lib/api/listings.functions";
+import { getListing, incrementViewCount, deleteListing, updateListing } from "@/lib/api/listings.functions";
 import { getPrompt, PROMPTS, type Prompt } from "@/lib/mock-data";
 import { getCurrentUser } from "@/lib/api/auth.functions";
 import { isSaved, savePrompt, unsavePrompt } from "@/lib/api/saves.functions";
 import { purchaseListing, hasPurchased } from "@/lib/api/purchases.functions";
-import { listReviews, getAverageRating } from "@/lib/api/reviews.functions";
+import { listReviews, getAverageRating, hasUserReviewed, createReview } from "@/lib/api/reviews.functions";
 import { getMyCredits } from "@/lib/api/credits.functions";
 import { recordCopy } from "@/lib/api/copies.functions";
 
@@ -66,6 +66,16 @@ function PromptDetail() {
   const [hasOwnedListing, setHasOwnedListing] = useState(false);
   const [buying, setBuying] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editBody, setEditBody] = useState("");
+  const [editPrice, setEditPrice] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [hasAlreadyReviewed, setHasAlreadyReviewed] = useState(false);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewBody, setReviewBody] = useState("");
+  const [submittingReview, setSubmittingReview] = useState(false);
 
   const related = PROMPTS.filter((p) => p.id !== prompt.id).slice(0, 3);
 
@@ -100,6 +110,12 @@ function PromptDetail() {
           // Check if user has purchased
           const purchased = await hasPurchased({ data: { listingId: prompt.id } });
           setHasOwnedListing(purchased.purchased);
+
+          // Check if user already reviewed
+          if (purchased.purchased) {
+            const reviewed = await hasUserReviewed({ data: { listingId: prompt.id } });
+            setHasAlreadyReviewed(reviewed.reviewed);
+          }
         }
       } catch (err) {
         console.error("Failed to load prompt details", err);
@@ -172,6 +188,48 @@ function PromptDetail() {
     }
   };
 
+  const handleOpenEdit = () => {
+    setEditTitle(prompt.title);
+    setEditDescription(prompt.description);
+    setEditBody(prompt.body);
+    setEditPrice(prompt.price);
+    setEditOpen(true);
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await updateListing({ data: { id: prompt.id, title: editTitle, description: editDescription, body: editBody, price: editPrice } });
+      await router.invalidate();
+      setEditOpen(false);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSubmitReview = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmittingReview(true);
+    try {
+      await createReview({ data: { listingId: prompt.id, rating: reviewRating, body: reviewBody } });
+      const [reviewsList, rating] = await Promise.all([
+        listReviews({ data: { listingId: prompt.id } }),
+        getAverageRating({ data: { listingId: prompt.id } }),
+      ]);
+      setReviews(reviewsList as Review[]);
+      setAvgRating(rating.average);
+      setHasAlreadyReviewed(true);
+      setReviewBody("");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to submit review");
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
+
   const isOwner = currentUser && currentUser.id === (prompt as any).userId;
 
   return (
@@ -228,8 +286,8 @@ function PromptDetail() {
                 {reviews.length === 0 ? (
                   <p className="text-sm text-ink/60">No reviews yet. Be the first to share your thoughts!</p>
                 ) : (
-                  reviews.map((r) => (
-                    <div key={r.id} className="bg-white border-2 border-ink p-4">
+                  reviews.map((r, i) => (
+                    <div key={i} className="bg-white border-2 border-ink p-4">
                       <div className="flex justify-between items-center mb-1">
                         <span className="font-bold uppercase text-sm">@{r.username}</span>
                         <span className="text-accent-orange text-sm">{"★".repeat(r.rating)}</span>
@@ -239,6 +297,38 @@ function PromptDetail() {
                   ))
                 )}
               </div>
+
+              {hasOwnedListing && !hasAlreadyReviewed && (
+                <form onSubmit={handleSubmitReview} className="mt-6 bg-white border-4 border-ink p-5">
+                  <h4 className="font-display text-xl uppercase mb-3">Leave a Review</h4>
+                  <div className="flex gap-2 mb-3">
+                    {[1,2,3,4,5].map((n) => (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => setReviewRating(n)}
+                        className={`text-2xl transition-transform hover:scale-110 ${n <= reviewRating ? "text-accent-orange" : "text-ink/20"}`}
+                      >
+                        ★
+                      </button>
+                    ))}
+                  </div>
+                  <textarea
+                    value={reviewBody}
+                    onChange={(e) => setReviewBody(e.target.value)}
+                    rows={3}
+                    placeholder="Share your experience with this prompt…"
+                    className="w-full border-2 border-ink p-3 font-medium text-sm focus:outline-none focus:ring-4 focus:ring-magenta/30 resize-none"
+                  />
+                  <button
+                    type="submit"
+                    disabled={submittingReview}
+                    className="mt-3 w-full bg-magenta text-white py-3 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all disabled:opacity-50"
+                  >
+                    {submittingReview ? "Submitting…" : "Submit Review"}
+                  </button>
+                </form>
+              )}
             </div>
           </div>
 
@@ -328,7 +418,7 @@ function PromptDetail() {
                   {isOwner && (
                     <>
                       <button
-                        onClick={() => alert("Edit feature coming soon")}
+                        onClick={handleOpenEdit}
                         className="w-full bg-holo-purple text-white py-3 font-bold uppercase border-2 border-ink text-xs shadow-[3px_3px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all"
                       >
                         Edit Listing
@@ -410,6 +500,50 @@ function PromptDetail() {
         listingId={prompt.id}
         listingTitle={prompt.title}
       />
+
+      {editOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4" role="dialog" aria-modal="true">
+          <div className="absolute inset-0 bg-ink/60" onClick={() => setEditOpen(false)} />
+          <div className="relative bg-white border-4 border-ink shadow-pop-lg w-full max-w-lg max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between p-5 border-b-4 border-ink bg-accent-yellow">
+              <h2 className="font-display text-2xl uppercase">Edit Listing</h2>
+              <button onClick={() => setEditOpen(false)} className="font-bold text-lg hover:text-magenta">✕</button>
+            </div>
+            <form onSubmit={handleSaveEdit} className="overflow-y-auto flex-1 p-5 space-y-4">
+              <div>
+                <label className="text-xs font-bold uppercase tracking-widest block mb-1">Title</label>
+                <input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} required minLength={2} maxLength={80}
+                  className="w-full border-2 border-ink p-2 font-bold text-sm focus:outline-none focus:ring-4 focus:ring-magenta/30" />
+              </div>
+              <div>
+                <label className="text-xs font-bold uppercase tracking-widest block mb-1">Description</label>
+                <textarea value={editDescription} onChange={(e) => setEditDescription(e.target.value)} required rows={2} minLength={10} maxLength={280}
+                  className="w-full border-2 border-ink p-2 font-medium text-sm focus:outline-none focus:ring-4 focus:ring-magenta/30 resize-none" />
+              </div>
+              <div>
+                <label className="text-xs font-bold uppercase tracking-widest block mb-1">Prompt Body</label>
+                <textarea value={editBody} onChange={(e) => setEditBody(e.target.value)} required rows={4} minLength={10} maxLength={2000}
+                  className="w-full border-2 border-ink p-2 font-mono text-sm focus:outline-none focus:ring-4 focus:ring-magenta/30 resize-none" />
+              </div>
+              <div>
+                <label className="text-xs font-bold uppercase tracking-widest block mb-1">Price (✦)</label>
+                <input type="number" value={editPrice} onChange={(e) => setEditPrice(Number(e.target.value))} min={0} max={49.99} step={0.01}
+                  className="w-full border-2 border-ink p-2 font-bold text-sm focus:outline-none focus:ring-4 focus:ring-magenta/30" />
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button type="submit" disabled={saving}
+                  className="flex-1 bg-magenta text-white py-3 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all disabled:opacity-50">
+                  {saving ? "Saving…" : "Save Changes"}
+                </button>
+                <button type="button" onClick={() => setEditOpen(false)}
+                  className="px-5 bg-white text-ink py-3 font-display uppercase border-2 border-ink hover:bg-ink hover:text-white transition-colors">
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

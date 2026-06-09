@@ -102,3 +102,13 @@ export const signOut = createServerFn({ method: "POST" }).handler(async () => {
 export const getCurrentUser = createServerFn({ method: "GET" }).handler(async () => {
   return getSessionUser();
 });
+
+export const updateBio = createServerFn({ method: "POST" })
+  .validator(z.object({ bio: z.string().max(300) }))
+  .handler(async ({ data }) => {
+    const user = await getSessionUser();
+    if (!user) throw new Error("You must be signed in.");
+    const db = getDb();
+    await db.query("UPDATE users SET bio = $1 WHERE id = $2", [sanitize(data.bio), user.id]);
+    return { ok: true as const };
+  });

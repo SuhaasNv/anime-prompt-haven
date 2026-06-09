@@ -2,7 +2,7 @@ import { createFileRoute, Link, notFound, redirect, useRouter } from "@tanstack/
 import { useState } from "react";
 import { Navbar } from "@/components/Navbar";
 import { CURRENT_USER_QUERY_KEY, getCurrentUser } from "@/lib/api/auth.functions";
-import { addPromptToCollection, listCollections } from "@/lib/api/collections.functions";
+import { addPromptToCollection, removePromptFromCollection, deleteCollection, listCollections } from "@/lib/api/collections.functions";
 import { getListing } from "@/lib/api/listings.functions";
 import { getPrompt, PROMPTS, type Prompt } from "@/lib/mock-data";
 
@@ -160,9 +160,36 @@ function AddPromptPicker({ collectionId, savedIds, onClose }: { collectionId: st
 }
 
 function CollectionDetail() {
+  const router = useRouter();
   const { collection, prompts } = Route.useLoaderData();
   const [adding, setAdding] = useState(false);
+  const [removing, setRemoving] = useState<string | null>(null);
+  const [deletingCol, setDeletingCol] = useState(false);
   const colors = colorMap[collection.color];
+
+  const handleRemovePrompt = async (promptId: string) => {
+    setRemoving(promptId);
+    try {
+      await removePromptFromCollection({ data: { collectionId: collection.id, promptId } });
+      await router.invalidate();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to remove prompt");
+    } finally {
+      setRemoving(null);
+    }
+  };
+
+  const handleDeleteCollection = async () => {
+    if (!confirm(`Delete "${collection.name}"? This cannot be undone.`)) return;
+    setDeletingCol(true);
+    try {
+      await deleteCollection({ data: { id: collection.id } });
+      await router.navigate({ to: "/dashboard" });
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete collection");
+      setDeletingCol(false);
+    }
+  };
 
   return (
     <div className="min-h-screen">
@@ -182,8 +209,12 @@ function CollectionDetail() {
               <p className="mt-3 font-mono text-sm">{prompts.length} prompts saved</p>
             </div>
             <div className="flex gap-3">
-              <button className="bg-white text-ink px-4 py-2 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all text-sm">
-                Share
+              <button
+                onClick={handleDeleteCollection}
+                disabled={deletingCol}
+                className="bg-magenta text-white px-4 py-2 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all text-sm disabled:opacity-50"
+              >
+                {deletingCol ? "Deleting…" : "Delete"}
               </button>
               <button
                 onClick={() => setAdding((v) => !v)}
@@ -214,31 +245,32 @@ function CollectionDetail() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {prompts.map((p) => (
-              <Link
-                key={p.id}
-                to="/prompt/$id"
-                params={{ id: p.id }}
-                className="block bg-white border-2 border-ink p-4 hover:rotate-[-1deg] hover:shadow-pop transition-all"
-              >
-                <div className="flex gap-4">
-                  <img src={p.image} alt={p.title} loading="lazy" className="size-24 object-cover border-2 border-ink shrink-0" />
-                  <div className="min-w-0 flex-1">
-                    <h3 className="font-bold uppercase truncate">{p.title}</h3>
-                    <p className="text-xs text-ink/60 mt-1 line-clamp-2">{p.description}</p>
-                    <div className="flex items-center gap-2 mt-2">
-                      <span className="text-xs font-bold uppercase">@{p.creator}</span>
-                      <span className="text-xs text-accent-orange font-bold">★ {p.rating}</span>
+              <div key={p.id} className="relative bg-white border-2 border-ink hover:shadow-pop transition-all">
+                <Link to="/prompt/$id" params={{ id: p.id }} className="block p-4">
+                  <div className="flex gap-4">
+                    <img src={p.image} alt={p.title} loading="lazy" className="size-24 object-cover border-2 border-ink shrink-0" />
+                    <div className="min-w-0 flex-1 pr-6">
+                      <h3 className="font-bold uppercase truncate">{p.title}</h3>
+                      <p className="text-xs text-ink/60 mt-1 line-clamp-2">{p.description}</p>
+                      <div className="flex items-center gap-2 mt-2">
+                        <span className="text-xs font-bold uppercase">@{p.creator}</span>
+                        <span className="text-xs text-accent-orange font-bold">★ {p.rating}</span>
+                      </div>
                     </div>
                   </div>
-                </div>
-                <div className="mt-3 pt-3 border-t-2 border-dashed border-ink/20 flex justify-between items-center">
-                  <span className="text-xs font-mono uppercase text-ink/60">Saved to binder</span>
-                  <div className="flex gap-1">
-                    <span className="px-2 py-0.5 bg-accent-yellow border border-ink text-[10px] font-bold uppercase">Copy</span>
-                    <span className="px-2 py-0.5 bg-white border border-ink text-[10px] font-bold uppercase">Edit</span>
+                  <div className="mt-3 pt-3 border-t-2 border-dashed border-ink/20">
+                    <span className="text-xs font-mono uppercase text-ink/60">Saved to binder</span>
                   </div>
-                </div>
-              </Link>
+                </Link>
+                <button
+                  onClick={() => handleRemovePrompt(p.id)}
+                  disabled={removing === p.id}
+                  title="Remove from collection"
+                  className="absolute top-3 right-3 size-7 flex items-center justify-center bg-white border-2 border-ink text-magenta font-bold text-xs hover:bg-magenta hover:text-white transition-colors disabled:opacity-50"
+                >
+                  {removing === p.id ? "…" : "✕"}
+                </button>
+              </div>
             ))}
           </div>
         )}

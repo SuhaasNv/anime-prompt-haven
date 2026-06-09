@@ -17,6 +17,7 @@ export function Navbar() {
   const queryClient = useQueryClient();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [menuOpen, setMenuOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [creditsOpen, setCreditsOpen] = useState(false);
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
@@ -90,8 +91,17 @@ export function Navbar() {
           })}
         </div>
 
+        {/* Mobile hamburger */}
+        <button
+          className="md:hidden p-2 border-2 border-ink font-bold text-lg"
+          onClick={() => setMobileOpen((o) => !o)}
+          aria-label="Toggle menu"
+        >
+          {mobileOpen ? "✕" : "☰"}
+        </button>
+
         {user ? (
-          <div className="flex items-center gap-4">
+          <div className="hidden md:flex items-center gap-4">
             <CreditBalanceWidget balance={creditBalance} onOpen={() => setCreditsOpen(true)} />
             <div ref={menuRef} className="relative">
               <button
@@ -131,10 +141,10 @@ export function Navbar() {
             </div>
           </div>
         ) : (
-          <div className="flex items-center gap-3">
+          <div className="hidden md:flex items-center gap-3">
             <Link
               to="/auth"
-              className="hidden sm:inline font-bold uppercase text-sm hover:text-magenta transition-colors"
+              className="font-bold uppercase text-sm hover:text-magenta transition-colors"
             >
               Log In
             </Link>
@@ -148,6 +158,38 @@ export function Navbar() {
           </div>
         )}
       </div>
+
+      {/* Mobile drawer */}
+      {mobileOpen && (
+        <div className="md:hidden border-t-4 border-ink bg-white">
+          {links.map((l) => {
+            const active = l.to === "/" ? pathname === "/" : pathname.startsWith(l.to);
+            return (
+              <Link
+                key={l.to}
+                to={l.to}
+                onClick={() => setMobileOpen(false)}
+                className={`block px-6 py-4 font-bold uppercase text-sm border-b-2 border-ink/10 transition-colors ${
+                  active ? "bg-magenta text-white" : "hover:bg-accent-yellow"
+                }`}
+              >
+                {l.label}
+              </Link>
+            );
+          })}
+          {user ? (
+            <>
+              <Link to="/profile" onClick={() => setMobileOpen(false)} className="block px-6 py-4 font-bold uppercase text-sm border-b-2 border-ink/10 hover:bg-accent-yellow transition-colors">Studio</Link>
+              <button onClick={() => { handleSignOut(); setMobileOpen(false); }} className="w-full text-left px-6 py-4 font-bold uppercase text-sm text-magenta hover:bg-ink hover:text-white transition-colors">Sign Out</button>
+            </>
+          ) : (
+            <>
+              <Link to="/auth" onClick={() => setMobileOpen(false)} className="block px-6 py-4 font-bold uppercase text-sm border-b-2 border-ink/10 hover:bg-accent-yellow transition-colors">Log In</Link>
+              <Link to="/auth" search={{ mode: "signup" }} onClick={() => setMobileOpen(false)} className="block px-6 py-4 font-bold uppercase text-sm bg-accent-orange text-white hover:bg-magenta transition-colors">Join the Verse</Link>
+            </>
+          )}
+        </div>
+      )}
     </nav>
     <CreditsModal open={creditsOpen} onClose={() => setCreditsOpen(false)} onBalanceChange={setCreditBalance} />
     </>

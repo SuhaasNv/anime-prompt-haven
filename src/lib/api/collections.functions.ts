@@ -103,3 +103,35 @@ export const addPromptToCollection = createServerFn({ method: "POST" })
     );
     return { ok: true as const };
   });
+
+export const removePromptFromCollection = createServerFn({ method: "POST" })
+  .validator(z.object({ collectionId: z.string().uuid(), promptId: z.string().min(1) }))
+  .handler(async ({ data }) => {
+    const user = await requireUser();
+    const db = getDb();
+    const owned = await db.query("SELECT id FROM collections WHERE id = $1 AND user_id = $2", [
+      data.collectionId,
+      user.id,
+    ]);
+    if (owned.rows.length === 0) throw new Error("Collection not found.");
+    await db.query(
+      "DELETE FROM collection_prompts WHERE collection_id = $1 AND prompt_id = $2",
+      [data.collectionId, data.promptId],
+    );
+    return { ok: true as const };
+  });
+
+export const deleteCollection = createServerFn({ method: "POST" })
+  .validator(z.object({ id: z.string().uuid() }))
+  .handler(async ({ data }) => {
+    const user = await requireUser();
+    const db = getDb();
+    const owned = await db.query("SELECT id FROM collections WHERE id = $1 AND user_id = $2", [
+      data.id,
+      user.id,
+    ]);
+    if (owned.rows.length === 0) throw new Error("Collection not found.");
+    await db.query("DELETE FROM collection_prompts WHERE collection_id = $1", [data.id]);
+    await db.query("DELETE FROM collections WHERE id = $1", [data.id]);
+    return { ok: true as const };
+  });

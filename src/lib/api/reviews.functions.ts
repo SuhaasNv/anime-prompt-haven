@@ -61,6 +61,19 @@ export const listReviews = createServerFn({ method: "GET" })
     }));
   });
 
+export const hasUserReviewed = createServerFn({ method: "GET" })
+  .validator(z.object({ listingId: z.string().uuid() }))
+  .handler(async ({ data }) => {
+    const user = await getSessionUser();
+    if (!user) return { reviewed: false };
+    const db = getDb();
+    const result = await db.query(
+      "SELECT 1 FROM reviews WHERE listing_id = $1 AND user_id = $2",
+      [data.listingId, user.id]
+    );
+    return { reviewed: result.rows.length > 0 };
+  });
+
 export const getAverageRating = createServerFn({ method: "GET" })
   .validator(z.object({ listingId: z.string().uuid() }))
   .handler(async ({ data }) => {
