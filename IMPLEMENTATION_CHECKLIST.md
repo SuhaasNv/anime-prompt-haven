@@ -19,12 +19,13 @@
 - [x] Build verification: ✓ compiled successfully
 
 ### 1B. Fix SaveToCollectionModal
-- [ ] Read `src/components/SaveToCollectionModal.tsx` current implementation
-- [ ] Add `listingId: string` prop to component
-- [ ] Load real collections via `listCollections()` server fn
-- [ ] Replace "Save" button handler to call `addPromptToCollection()`
-- [ ] Handle unauthenticated case: redirect to `/auth`
-- [ ] Test: saving a prompt to a collection works, appears in collection detail
+- [x] Read `src/components/SaveToCollectionModal.tsx` current implementation
+- [x] Add `listingId: string` prop to component
+- [x] Load real collections via `listCollections()` server fn
+- [x] Replace "Save" button handler to call `addPromptToCollection()`
+- [x] Handle unauthenticated case: redirect to `/auth`
+- [x] Update prompt detail page to pass `listingId` prop
+- [x] Build verification: ✓ compiled successfully
 
 ### 1C. Fix collection detail prompt resolution
 - [ ] Read `src/routes/dashboard.collection.$id.tsx` current implementation

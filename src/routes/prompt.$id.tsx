@@ -220,6 +220,7 @@ function PromptDetail() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         promptTitle={prompt.title}
+        listingId={prompt.id}
       />
     </div>
   );
