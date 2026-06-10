@@ -5,6 +5,7 @@ import { Navbar } from "@/components/Navbar";
 import { CURRENT_USER_QUERY_KEY, getCurrentUser } from "@/lib/api/auth.functions";
 import { listReports, moderateListing } from "@/lib/api/reports.functions";
 import { listAllTransactions } from "@/lib/api/credits.functions";
+import { getDashboardMetrics, getAuditLogs } from "@/lib/api/admin.functions";
 
 interface FlaggedListing {
   id: string;
@@ -45,7 +46,7 @@ export const Route = createFileRoute("/admin")({
   component: AdminDashboard,
 });
 
-type CreditTab = "queue" | "credits";
+type AdminTab = "dashboard" | "queue" | "audit" | "credits";
 
 const TYPE_LABELS: Record<string, string> = {
   bonus: "Bonus",
@@ -61,9 +62,27 @@ function AdminDashboard() {
   const { flagged } = Route.useLoaderData() as { flagged: FlaggedListing[] };
   const [listings, setListings] = useState<FlaggedListing[]>(flagged);
   const [processing, setProcessing] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<CreditTab>("queue");
+  const [activeTab, setActiveTab] = useState<AdminTab>("dashboard");
   const [creditData, setCreditData] = useState<Awaited<ReturnType<typeof listAllTransactions>> | null>(null);
   const [loadingCredits, setLoadingCredits] = useState(false);
+  const [metrics, setMetrics] = useState<Awaited<ReturnType<typeof getDashboardMetrics>> | null>(null);
+  const [loadingMetrics, setLoadingMetrics] = useState(false);
+  const [auditLogs, setAuditLogs] = useState<Awaited<ReturnType<typeof getAuditLogs>> | null>(null);
+  const [loadingAudit, setLoadingAudit] = useState(false);
+
+  useEffect(() => {
+    if (activeTab === "dashboard" && !metrics) {
+      setLoadingMetrics(true);
+      getDashboardMetrics().then(setMetrics).finally(() => setLoadingMetrics(false));
+    }
+  }, [activeTab, metrics]);
+
+  useEffect(() => {
+    if (activeTab === "audit" && !auditLogs) {
+      setLoadingAudit(true);
+      getAuditLogs().then(setAuditLogs).finally(() => setLoadingAudit(false));
+    }
+  }, [activeTab, auditLogs]);
 
   useEffect(() => {
     if (activeTab !== "credits" || creditData) return;
@@ -111,8 +130,8 @@ function AdminDashboard() {
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-2 mb-8 border-b-4 border-ink">
-          {(["queue", "credits"] as CreditTab[]).map((tab) => (
+        <div className="flex gap-2 mb-8 border-b-4 border-ink flex-wrap">
+          {(["dashboard", "queue", "audit", "credits"] as AdminTab[]).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -122,10 +141,126 @@ function AdminDashboard() {
                   : "bg-white text-ink border-ink/30 hover:border-ink"
               }`}
             >
-              {tab === "queue" ? `⚠️ Flagged Queue (${listings.length})` : "✦ Credit Activity"}
+              {tab === "dashboard" && "📊 Analytics"}
+              {tab === "queue" && `⚠️ Queue (${listings.length})`}
+              {tab === "audit" && "🔍 Audit Log"}
+              {tab === "credits" && "✦ Transactions"}
             </button>
           ))}
         </div>
+
+        {activeTab === "dashboard" && (
+          <div>
+            {loadingMetrics ? (
+              <p className="text-ink/50 py-10 text-center font-mono">Loading metrics…</p>
+            ) : metrics ? (
+              <div className="space-y-8">
+                {/* Revenue Section */}
+                <div>
+                  <h3 className="font-display text-xl uppercase mb-4">Revenue</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {[
+                      { label: "Revenue (24h)", value: metrics.revenue.total24h },
+                      { label: "Revenue (7d)", value: metrics.revenue.total7d },
+                      { label: "Revenue (30d)", value: metrics.revenue.total30d },
+                      { label: "Platform Fees (24h)", value: metrics.revenue.platformFees24h },
+                    ].map((m) => (
+                      <div key={m.label} className="bg-white border-4 border-ink p-4 shadow-pop">
+                        <div className="text-xs font-bold uppercase tracking-widest text-ink/60 mb-2">{m.label}</div>
+                        <div className="font-display text-2xl uppercase">✦ {m.value.toFixed(2)}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* User Engagement */}
+                <div>
+                  <h3 className="font-display text-xl uppercase mb-4">Users</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {[
+                      { label: "Active Creators (24h)", value: metrics.users.activeCreators24h },
+                      { label: "Active Buyers (24h)", value: metrics.users.activeBuyers24h },
+                      { label: "Total Creators", value: metrics.users.totalCreators },
+                      { label: "Total Users", value: metrics.users.totalUsers },
+                    ].map((m) => (
+                      <div key={m.label} className="bg-white border-4 border-ink p-4 shadow-pop">
+                        <div className="text-xs font-bold uppercase tracking-widest text-ink/60 mb-2">{m.label}</div>
+                        <div className="font-display text-2xl uppercase">{m.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Content Health */}
+                <div>
+                  <h3 className="font-display text-xl uppercase mb-4">Content Health</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {[
+                      { label: "Flagged Listings", value: metrics.content.flaggedListings },
+                      { label: "Pending Reports", value: metrics.content.pendingReports },
+                      { label: "Total Listings", value: metrics.content.totalListings },
+                      { label: "Avg Rating", value: metrics.health.averageRating.toFixed(1) },
+                    ].map((m) => (
+                      <div key={m.label} className="bg-white border-4 border-ink p-4 shadow-pop">
+                        <div className="text-xs font-bold uppercase tracking-widest text-ink/60 mb-2">{m.label}</div>
+                        <div className="font-display text-2xl uppercase">{m.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        )}
+
+        {activeTab === "audit" && (
+          <div>
+            {loadingAudit ? (
+              <p className="text-ink/50 py-10 text-center font-mono">Loading audit log…</p>
+            ) : auditLogs ? (
+              <div className="bg-white border-4 border-ink shadow-pop overflow-hidden">
+                <div className="p-4 border-b-4 border-ink bg-accent-yellow">
+                  <h3 className="font-display text-xl uppercase">Admin Audit Trail</h3>
+                  <p className="text-xs text-ink/60 mt-1">Immutable record of all admin actions</p>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs font-mono">
+                    <thead className="bg-ink/5 border-b-2 border-ink">
+                      <tr>
+                        {["Date", "Admin", "Action", "Target ID", "Details"].map((h) => (
+                          <th key={h} className="text-left px-4 py-2 font-bold uppercase tracking-wide">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {auditLogs.length > 0 ? (
+                        auditLogs.map((log) => (
+                          <tr key={log.id} className="border-b border-ink/10 hover:bg-ink/5">
+                            <td className="px-4 py-2 text-ink/50">{new Date(log.created_at).toLocaleString()}</td>
+                            <td className="px-4 py-2 font-bold">{log.admin_email}</td>
+                            <td className="px-4 py-2">
+                              <span className="px-2 py-0.5 border border-ink bg-accent-yellow font-bold uppercase">
+                                {log.action}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2 text-ink/70">{log.target_id ? log.target_id.slice(0, 8) : "—"}</td>
+                            <td className="px-4 py-2 text-ink/50 truncate max-w-[200px]">{log.details ?? "—"}</td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={5} className="px-4 py-10 text-center text-ink/50">
+                            No audit logs found
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        )}
 
         {activeTab === "credits" && (
           <div>
