@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getSessionUser } from "../auth.server";
 import { getDb } from "../db.server";
+import { logAdminAction } from "./audit.functions";
 
 export const CREDITS_QUERY_KEY = ["credits"] as const;
 
@@ -29,6 +30,18 @@ export const topUpCredits = createServerFn({ method: "POST" })
 
     const db = getDb();
     const TOPUP_AMOUNT = 50.0;
+
+    // Rate limit: max 1 topup per 24 hours per user
+    const lastTopup = await db.query<{ created_at: string }>(
+      `SELECT created_at FROM credit_transactions
+       WHERE user_id = $1 AND type = 'bonus' AND created_at > now() - interval '24 hours'
+       ORDER BY created_at DESC LIMIT 1`,
+      [user.id]
+    );
+
+    if (lastTopup.rows.length > 0) {
+      throw new Error("You can only top up credits once per day. Try again later.");
+    }
 
     // Insert or update user_credits
     await db.query(
@@ -88,6 +101,9 @@ export const listAllTransactions = createServerFn({ method: "GET" })
 
     const db = getDb();
 
+    // Log admin access for audit trail
+    await logAdminAction(db, user.id, "list_all_transactions");
+
     const txns = await db.query(
       `SELECT ct.id, ct.amount, ct.type, ct.note, ct.created_at,
               u.username
@@ -105,14 +121,6 @@ export const listAllTransactions = createServerFn({ method: "GET" })
        WHERE created_at >= now() - interval '24 hours'`
     );
 
-    const topEarners = await db.query(
-      `SELECT u.username, uc.balance
-       FROM user_credits uc
-       JOIN users u ON u.id = uc.user_id
-       ORDER BY uc.balance DESC
-       LIMIT 5`
-    );
-
     return {
       transactions: txns.rows.map((row: any) => ({
         id: row.id,
@@ -126,9 +134,5 @@ export const listAllTransactions = createServerFn({ method: "GET" })
         totalDistributed: parseFloat(stats.rows[0].total_distributed),
         totalPlatformFees: parseFloat(stats.rows[0].total_platform_fees),
       },
-      topEarners: topEarners.rows.map((row: any) => ({
-        username: row.username,
-        balance: parseFloat(row.balance),
-      })),
     };
   });

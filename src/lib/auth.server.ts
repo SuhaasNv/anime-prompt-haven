@@ -5,7 +5,7 @@ import { deleteCookie, getCookie, setCookie } from "@tanstack/react-start/server
 import { getDb } from "./db.server";
 
 const SESSION_COOKIE = "promptstar_session";
-const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days (financial system best practice)
 
 export type Mascot = "nova" | "comet";
 
@@ -28,11 +28,11 @@ export async function createSession(userId: string, remember = true): Promise<vo
 
   setCookie(SESSION_COOKIE, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
+    secure: true, // Always use HTTPS in production; development uses secure=false via test only
+    sameSite: "strict", // Prevent CSRF attacks (no cross-site cookies)
     path: "/",
     // "Remember me" off → browser session cookie (cleared on browser close).
-    // The DB-side session still lives for 30 days either way.
+    // The DB-side session lives for 7 days.
     ...(remember ? { expires: expiresAt } : {}),
   });
 }

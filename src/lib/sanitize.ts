@@ -1,3 +1,9 @@
+import DOMPurify from 'isomorphic-dompurify';
+
 export function sanitize(s: string): string {
-  return s.replace(/<[^>]*>/g, "").trim();
+  return DOMPurify.sanitize(s, {
+    ALLOWED_TAGS: [],
+    ALLOWED_ATTR: [],
+    KEEP_CONTENT: true,
+  }).trim();
 }

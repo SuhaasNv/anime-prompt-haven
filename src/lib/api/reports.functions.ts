@@ -4,6 +4,7 @@ import { getSessionUser } from "../auth.server";
 import { getDb } from "../db.server";
 import { sanitize } from "../sanitize";
 import { insertNotification } from "./notifications.functions";
+import { logAdminAction } from "./audit.functions";
 
 const REPORT_THRESHOLD = 5; // Auto-flag after this many reports
 
@@ -80,6 +81,9 @@ export const listReports = createServerFn({ method: "GET" })
     }
 
     const db = getDb();
+
+    // Log admin access for audit trail
+    await logAdminAction(db, user.id, "list_reports");
     const result = await db.query(
       `SELECT
         prompt_listings.id,
@@ -133,6 +137,15 @@ export const moderateListing = createServerFn({ method: "POST" })
     const result = await db.query<{ user_id: string; title: string }>(
       "UPDATE prompt_listings SET status = $1 WHERE id = $2 RETURNING user_id, title",
       [newStatus, data.listingId]
+    );
+
+    // Log admin moderation action
+    await logAdminAction(
+      db,
+      user.id,
+      "moderate_listing",
+      data.listingId,
+      `${data.action === "restore" ? "Restored" : "Removed"} listing`
     );
 
     // Best-effort: never fails the moderation action if this throws.

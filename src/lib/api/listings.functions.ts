@@ -12,7 +12,6 @@ export const CURRENT_USER_QUERY_KEY = ["current-user"] as const;
 export const MODEL_VALUES = ["Midjourney", "ChatGPT", "DALL-E", "Flux", "Stable Diffusion"] as const;
 const SHADOWS = ["magenta", "orange", "yellow", "purple"] as const;
 const ROTATIONS = [0, 1, -1] as const;
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_IMAGE_LENGTH = 6_000_000;
 const MAX_LISTINGS_PER_USER = 10;
 const MAX_PRICE = 49.99;
@@ -166,10 +165,8 @@ export const listListings = createServerFn({ method: "GET" })
   });
 
 export const getListing = createServerFn({ method: "GET" })
-  .inputValidator(z.object({ id: z.string().min(1) }))
+  .inputValidator(z.object({ id: z.string().uuid() }))
   .handler(async ({ data }): Promise<Prompt | null> => {
-    if (!UUID_RE.test(data.id)) return null;
-
     const db = getDb();
     const result = await db.query<ListingRow>(
       `SELECT ${LISTING_COLUMNS}

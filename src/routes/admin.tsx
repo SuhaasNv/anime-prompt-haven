@@ -134,29 +134,16 @@ function AdminDashboard() {
             ) : creditData ? (
               <>
                 {/* Stats strip */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
                   {[
                     { label: "Distributed (24h)", value: `✦ ${creditData.stats.totalDistributed.toFixed(2)}` },
                     { label: "Platform Fees (24h)", value: `✦ ${creditData.stats.totalPlatformFees.toFixed(2)}` },
-                    { label: "Top Earner", value: creditData.topEarners[0] ? `@${creditData.topEarners[0].username}` : "—" },
                   ].map((s) => (
                     <div key={s.label} className="bg-white border-4 border-ink p-4 text-center shadow-pop">
                       <div className="text-xs font-bold uppercase tracking-widest text-ink/60 mb-1">{s.label}</div>
                       <div className="font-display text-2xl uppercase">{s.value}</div>
                     </div>
                   ))}
-                </div>
-                {/* Top earners */}
-                <div className="bg-white border-4 border-ink p-5 shadow-pop mb-6">
-                  <h3 className="font-display text-xl uppercase mb-3">Top 5 Balances</h3>
-                  <div className="space-y-2">
-                    {creditData.topEarners.map((e, i) => (
-                      <div key={e.username} className="flex justify-between items-center text-sm border-b border-ink/10 pb-2">
-                        <span className="font-bold">#{i + 1} @{e.username}</span>
-                        <span className="font-mono text-green-600 font-bold">✦ {e.balance.toFixed(2)}</span>
-                      </div>
-                    ))}
-                  </div>
                 </div>
                 {/* Transaction log */}
                 <div className="bg-white border-4 border-ink shadow-pop overflow-hidden">

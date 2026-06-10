@@ -38,25 +38,26 @@ export const purchaseListing = createServerFn({ method: "POST" })
       throw new Error("You cannot purchase your own listing.");
     }
 
-    // Get buyer's current balance
-    const credits = await db.query<{ balance: string }>(
-      "SELECT balance FROM user_credits WHERE user_id = $1",
-      [user.id]
-    );
-
-    const balance = credits.rows.length > 0 ? parseFloat(credits.rows[0].balance) : 0;
-
-    if (balance < price) {
-      throw new Error(`Insufficient credits. You have ${balance.toFixed(2)}, need ${price.toFixed(2)}.`);
-    }
-
     // ========================================================================
-    // ATOMIC TRANSACTION: All or nothing
+    // ATOMIC TRANSACTION: All or nothing (SERIALIZABLE with row locking)
     // ========================================================================
     try {
-      await db.query("BEGIN");
+      await db.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
 
-      // 1. Insert purchase record (UNIQUE constraint prevents duplicates)
+      // 1. Lock and verify buyer's balance (inside transaction to prevent race)
+      const credits = await db.query<{ balance: string }>(
+        "SELECT balance FROM user_credits WHERE user_id = $1 FOR UPDATE",
+        [user.id]
+      );
+
+      const balance = credits.rows.length > 0 ? parseFloat(credits.rows[0].balance) : 0;
+
+      if (balance < price) {
+        await db.query("ROLLBACK");
+        throw new Error(`Insufficient credits. You have ${balance.toFixed(2)}, need ${price.toFixed(2)}.`);
+      }
+
+      // 2. Insert purchase record (UNIQUE constraint prevents duplicates)
       const purchaseResult = await db.query<{ id: string }>(
         `INSERT INTO purchases (buyer_id, listing_id, price_paid)
          VALUES ($1, $2, $3)
@@ -65,18 +66,19 @@ export const purchaseListing = createServerFn({ method: "POST" })
       );
 
       if (purchaseResult.rows.length === 0) {
+        await db.query("ROLLBACK");
         throw new Error("You have already purchased this listing.");
       }
 
       const purchaseId = purchaseResult.rows[0].id;
 
-      // 2. Deduct from buyer's balance
+      // 3. Deduct from buyer's balance
       await db.query(
         "UPDATE user_credits SET balance = balance - $1, updated_at = now() WHERE user_id = $2",
         [price, user.id]
       );
 
-      // 3. Add to seller's balance (70% split; platform keeps 30%)
+      // 4. Add to seller's balance (70% split; platform keeps 30%)
       const sellerEarnings = Math.round(price * 0.70 * 100) / 100;
       const platformFee = Math.round(price * 0.30 * 100) / 100;
       await db.query(
@@ -86,28 +88,28 @@ export const purchaseListing = createServerFn({ method: "POST" })
         [sellerId, sellerEarnings]
       );
 
-      // 4. Log buyer transaction (negative = debit)
+      // 5. Log buyer transaction (negative = debit)
       await db.query(
         `INSERT INTO credit_transactions (user_id, amount, type, reference_id, note)
          VALUES ($1, $2, 'purchase', $3, $4)`,
         [user.id, -price, purchaseId, `Purchase: ${data.listingId}`]
       );
 
-      // 5. Log seller transaction (positive = credit)
+      // 6. Log seller transaction (positive = credit)
       await db.query(
         `INSERT INTO credit_transactions (user_id, amount, type, reference_id, note)
          VALUES ($1, $2, 'sale_earn', $3, $4)`,
         [sellerId, sellerEarnings, purchaseId, `Sale earnings from purchase`]
       );
 
-      // 6a. Log platform fee (audit trail)
+      // 7. Log platform fee (audit trail)
       await db.query(
         `INSERT INTO credit_transactions (user_id, amount, type, reference_id, note)
          VALUES ($1, $2, 'platform_fee', $3, $4)`,
         [sellerId, -platformFee, purchaseId, `Platform fee (30%)`]
       );
 
-      // 6. Increment purchase count on listing
+      // 8. Increment purchase count on listing
       await db.query(
         "UPDATE prompt_listings SET purchase_count = purchase_count + 1 WHERE id = $1",
         [data.listingId]

@@ -153,7 +153,7 @@ export const addPromptToCollection = createServerFn({ method: "POST" })
   .inputValidator(
     z.object({
       collectionId: z.string().uuid(),
-      promptId: z.string().min(1),
+      promptId: z.string().uuid(),
     }),
   )
   .handler(async ({ data }) => {
@@ -176,7 +176,7 @@ export const addPromptToCollection = createServerFn({ method: "POST" })
   });
 
 export const removePromptFromCollection = createServerFn({ method: "POST" })
-  .inputValidator(z.object({ collectionId: z.string().uuid(), promptId: z.string().min(1) }))
+  .inputValidator(z.object({ collectionId: z.string().uuid(), promptId: z.string().uuid() }))
   .handler(async ({ data }) => {
     const user = await requireUser();
     const db = getDb();

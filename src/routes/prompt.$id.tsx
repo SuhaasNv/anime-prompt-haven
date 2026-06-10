@@ -15,8 +15,13 @@ import { listReviews, getAverageRating, hasUserReviewed, createReview, deleteRev
 import { CREDITS_QUERY_KEY, getMyCredits } from "@/lib/api/credits.functions";
 import { recordCopy } from "@/lib/api/copies.functions";
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export const Route = createFileRoute("/prompt/$id")({
   loader: async ({ params }) => {
+    // Validate UUID format early to show 404 instead of generic error for malformed IDs
+    if (!UUID_RE.test(params.id)) throw notFound();
+
     const prompt = getPrompt(params.id) ?? (await getListing({ data: { id: params.id } }));
     if (!prompt) throw notFound();
     return { prompt };

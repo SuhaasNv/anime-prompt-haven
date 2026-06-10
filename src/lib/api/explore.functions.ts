@@ -15,7 +15,7 @@ export interface FeaturedCreator {
   username: string;
   mascot: MascotKey;
   bio: string | null;
-  totalEarnings: number;
+  listingCount: number;
 }
 
 export const getTrendingTags = createServerFn({ method: "GET" })
@@ -44,21 +44,14 @@ export const getFeaturedCreators = createServerFn({ method: "GET" })
       username: string;
       mascot: MascotKey;
       bio: string | null;
-      total: string;
+      count: string;
     }>(
-      `SELECT u.id, u.username, u.mascot, u.bio, earnings.total
+      `SELECT u.id, u.username, u.mascot, u.bio, COUNT(pl.id) AS count
        FROM users u
-       JOIN (
-         SELECT user_id, SUM(amount) AS total
-         FROM credit_transactions
-         WHERE type = 'sale_earn'
-         GROUP BY user_id
-       ) earnings ON earnings.user_id = u.id
-       WHERE EXISTS (
-         SELECT 1 FROM prompt_listings pl
-         WHERE pl.user_id = u.id AND pl.status = 'published' AND pl.is_nsfw = false
-       )
-       ORDER BY earnings.total DESC
+       JOIN prompt_listings pl ON pl.user_id = u.id
+       WHERE pl.status = 'published' AND pl.is_nsfw = false
+       GROUP BY u.id, u.username, u.mascot, u.bio
+       ORDER BY count DESC
        LIMIT $1`,
       [data.limit]
     );
@@ -68,7 +61,7 @@ export const getFeaturedCreators = createServerFn({ method: "GET" })
       username: row.username,
       mascot: row.mascot,
       bio: row.bio,
-      totalEarnings: parseFloat(row.total),
+      listingCount: parseInt(row.count, 10),
     }));
   });
 
