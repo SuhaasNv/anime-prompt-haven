@@ -4,10 +4,19 @@ import { z } from "zod";
 
 import { createSession, destroySession, getSessionUser } from "../auth.server";
 import { getDb } from "../db.server";
+import { checkRateLimit } from "../rate-limit.server";
 import { sanitize } from "../sanitize";
 
 const PASSWORD_MIN_LENGTH = 8;
 const MASCOT_VALUES = ["nova", "comet"] as const;
+
+const SIGNIN_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+const SIGNIN_RATE_LIMIT_MAX_ATTEMPTS = 10;
+
+// Precomputed bcrypt hash with no matching password, used to keep the
+// "user not found" path's timing in line with the "wrong password" path
+// so response time can't be used to enumerate registered emails.
+const DUMMY_PASSWORD_HASH = "$2a$10$CwTycUXWue0Thq9StjUM0uJ8K6bpkxwpoxNNYFDH2u8Bj6lqrVj0u";
 
 // Shared so the navbar's cached session lookup can be kept in sync (instead
 // of refetched from scratch) right when sign-in/sign-out actually changes it —
@@ -88,18 +97,20 @@ export const signIn = createServerFn({ method: "POST" })
     }),
   )
   .handler(async ({ data }) => {
+    const rateLimitKey = `signin:${data.email.toLowerCase()}`;
+    checkRateLimit(rateLimitKey, SIGNIN_RATE_LIMIT_MAX_ATTEMPTS, SIGNIN_RATE_LIMIT_WINDOW_MS);
+
     const db = getDb();
     const result = await db.query<{ id: string; password_hash: string }>(
       "SELECT id, password_hash FROM users WHERE email = $1",
       [data.email],
     );
     const user = result.rows[0];
-    if (!user) {
-      throw new Error("Invalid email or password.");
-    }
 
-    const valid = await bcrypt.compare(data.password, user.password_hash);
-    if (!valid) {
+    // Always run bcrypt.compare, even when no user was found, so the
+    // response time doesn't reveal whether the email is registered.
+    const valid = await bcrypt.compare(data.password, user?.password_hash ?? DUMMY_PASSWORD_HASH);
+    if (!user || !valid) {
       throw new Error("Invalid email or password.");
     }
 

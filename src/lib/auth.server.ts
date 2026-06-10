@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import process from "node:process";
 
 import { deleteCookie, getCookie, setCookie } from "@tanstack/react-start/server";
 
@@ -28,7 +29,7 @@ export async function createSession(userId: string, remember = true): Promise<vo
 
   setCookie(SESSION_COOKIE, token, {
     httpOnly: true,
-    secure: true, // Always use HTTPS in production; development uses secure=false via test only
+    secure: process.env.NODE_ENV === "production", // HTTPS-only in prod; plain http works in dev
     sameSite: "strict", // Prevent CSRF attacks (no cross-site cookies)
     path: "/",
     // "Remember me" off → browser session cookie (cleared on browser close).

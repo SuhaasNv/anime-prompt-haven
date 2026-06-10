@@ -757,6 +757,14 @@ export const deleteUserAccount = createServerFn({ method: "POST" })
     }
 
     const userData = userResult.rows[0];
+
+    if (userData.id === user.id) {
+      throw new Error("You cannot delete your own account.");
+    }
+    if (userData.is_admin) {
+      throw new Error("Admin accounts cannot be deleted through this tool.");
+    }
+
     const emailHash = createHash("sha256").update(userData.email).digest("hex");
 
     // Create archive record
