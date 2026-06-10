@@ -2,16 +2,29 @@ import { createFileRoute, Link, notFound, useRouter } from "@tanstack/react-rout
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
+import { toast } from "sonner";
 import { Navbar } from "@/components/Navbar";
+import { confirm } from "@/components/ui/confirm-dialog";
 import { SaveToCollectionModal } from "@/components/SaveToCollectionModal";
 import { ReportModal } from "@/components/ReportModal";
 import { PurchaseModal } from "@/components/PurchaseModal";
-import { getListing, incrementViewCount, deleteListing, updateListing } from "@/lib/api/listings.functions";
+import {
+  getListing,
+  incrementViewCount,
+  deleteListing,
+  updateListing,
+} from "@/lib/api/listings.functions";
 import { getPrompt, PROMPTS, type Prompt } from "@/lib/mock-data";
 import { getCurrentUser } from "@/lib/api/auth.functions";
 import { isSaved, savePrompt, unsavePrompt } from "@/lib/api/saves.functions";
 import { hasPurchased } from "@/lib/api/purchases.functions";
-import { listReviews, getAverageRating, hasUserReviewed, createReview, deleteReview } from "@/lib/api/reviews.functions";
+import {
+  listReviews,
+  getAverageRating,
+  hasUserReviewed,
+  createReview,
+  deleteReview,
+} from "@/lib/api/reviews.functions";
 import { CREDITS_QUERY_KEY, getMyCredits } from "@/lib/api/credits.functions";
 import { recordCopy } from "@/lib/api/copies.functions";
 
@@ -44,7 +57,9 @@ export const Route = createFileRoute("/prompt/$id")({
     <div className="min-h-screen flex items-center justify-center">
       <div className="text-center">
         <h1 className="font-display text-5xl uppercase text-magenta">Prompt vanished</h1>
-        <Link to="/" className="mt-4 inline-block underline font-bold">Back to market</Link>
+        <Link to="/" className="mt-4 inline-block underline font-bold">
+          Back to market
+        </Link>
       </div>
     </div>
   ),
@@ -170,13 +185,19 @@ function PromptDetail() {
   };
 
   const handleDelete = async () => {
-    if (!confirm("Are you sure you want to delete this listing?")) return;
+    const confirmed = await confirm({
+      title: "Delete listing?",
+      description: "Are you sure you want to delete this listing?",
+      confirmText: "Delete",
+      destructive: true,
+    });
+    if (!confirmed) return;
     setDeleting(true);
     try {
       await deleteListing({ data: { id: prompt.id } });
       await router.navigate({ to: "/" });
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to delete");
+      toast.error(err instanceof Error ? err.message : "Failed to delete");
     } finally {
       setDeleting(false);
     }
@@ -194,11 +215,19 @@ function PromptDetail() {
     e.preventDefault();
     setSaving(true);
     try {
-      await updateListing({ data: { id: prompt.id, title: editTitle, description: editDescription, body: editBody, price: editPrice } });
+      await updateListing({
+        data: {
+          id: prompt.id,
+          title: editTitle,
+          description: editDescription,
+          body: editBody,
+          price: editPrice,
+        },
+      });
       await router.invalidate();
       setEditOpen(false);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to save");
+      toast.error(err instanceof Error ? err.message : "Failed to save");
     } finally {
       setSaving(false);
     }
@@ -208,7 +237,9 @@ function PromptDetail() {
     e.preventDefault();
     setSubmittingReview(true);
     try {
-      await createReview({ data: { listingId: prompt.id, rating: reviewRating, body: reviewBody } });
+      await createReview({
+        data: { listingId: prompt.id, rating: reviewRating, body: reviewBody },
+      });
       const [reviewsList, rating] = await Promise.all([
         listReviews({ data: { listingId: prompt.id } }),
         getAverageRating({ data: { listingId: prompt.id } }),
@@ -218,7 +249,7 @@ function PromptDetail() {
       setHasAlreadyReviewed(true);
       setIsEditingReview(false);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to submit review");
+      toast.error(err instanceof Error ? err.message : "Failed to submit review");
     } finally {
       setSubmittingReview(false);
     }
@@ -253,7 +284,7 @@ function PromptDetail() {
       setReviewBody("");
       setConfirmingDeleteReview(false);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to delete review");
+      toast.error(err instanceof Error ? err.message : "Failed to delete review");
     } finally {
       setDeletingReview(false);
     }
@@ -300,7 +331,7 @@ function PromptDetail() {
                 </button>
               </div>
               <pre className="font-mono text-sm whitespace-pre-wrap leading-relaxed text-white/90">
-{prompt.body}
+                {prompt.body}
               </pre>
             </div>
 
@@ -308,12 +339,16 @@ function PromptDetail() {
               <div className="flex justify-between items-center mb-4 border-b-2 border-ink pb-2">
                 <h3 className="font-display text-2xl uppercase">Reviews</h3>
                 {avgRating !== null && (
-                  <span className="text-accent-orange font-bold">★ {avgRating.toFixed(1)} ({reviews.length})</span>
+                  <span className="text-accent-orange font-bold">
+                    ★ {avgRating.toFixed(1)} ({reviews.length})
+                  </span>
                 )}
               </div>
               <div className="space-y-3">
                 {reviews.length === 0 ? (
-                  <p className="text-sm text-ink/60">No reviews yet. Be the first to share your thoughts!</p>
+                  <p className="text-sm text-ink/60">
+                    No reviews yet. Be the first to share your thoughts!
+                  </p>
                 ) : (
                   reviews.map((r, i) => {
                     const isMine = currentUser && r.userId === currentUser.id;
@@ -324,10 +359,12 @@ function PromptDetail() {
                           <span className="text-accent-orange text-sm">{"★".repeat(r.rating)}</span>
                         </div>
                         <p className="text-sm text-ink/80">{r.body}</p>
-                        {isMine && (
-                          confirmingDeleteReview ? (
+                        {isMine &&
+                          (confirmingDeleteReview ? (
                             <div className="flex items-center gap-3 mt-2 pt-2 border-t border-ink/10">
-                              <span className="text-[10px] font-bold uppercase tracking-widest text-ink/60">Delete this review?</span>
+                              <span className="text-[10px] font-bold uppercase tracking-widest text-ink/60">
+                                Delete this review?
+                              </span>
                               <button
                                 type="button"
                                 onClick={handleDeleteReview}
@@ -362,8 +399,7 @@ function PromptDetail() {
                                 🗑 Delete
                               </button>
                             </div>
-                          )
-                        )}
+                          ))}
                       </div>
                     );
                   })
@@ -371,10 +407,15 @@ function PromptDetail() {
               </div>
 
               {hasOwnedListing && (!hasAlreadyReviewed || isEditingReview) && (
-                <form onSubmit={handleSubmitReview} className="mt-6 bg-white border-4 border-ink p-5">
-                  <h4 className="font-display text-xl uppercase mb-3">{isEditingReview ? "Edit Your Review" : "Leave a Review"}</h4>
+                <form
+                  onSubmit={handleSubmitReview}
+                  className="mt-6 bg-white border-4 border-ink p-5"
+                >
+                  <h4 className="font-display text-xl uppercase mb-3">
+                    {isEditingReview ? "Edit Your Review" : "Leave a Review"}
+                  </h4>
                   <div className="flex gap-2 mb-3">
-                    {[1,2,3,4,5].map((n) => (
+                    {[1, 2, 3, 4, 5].map((n) => (
                       <button
                         key={n}
                         type="button"
@@ -398,7 +439,11 @@ function PromptDetail() {
                       disabled={submittingReview}
                       className="flex-1 bg-magenta text-white py-3 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all disabled:opacity-50"
                     >
-                      {submittingReview ? "Submitting…" : isEditingReview ? "Update Review" : "Submit Review"}
+                      {submittingReview
+                        ? "Submitting…"
+                        : isEditingReview
+                          ? "Update Review"
+                          : "Submit Review"}
                     </button>
                     {isEditingReview && (
                       <button
@@ -427,7 +472,9 @@ function PromptDetail() {
                     {prompt.category}
                   </span>
                 </div>
-                <h1 className="font-display text-4xl uppercase leading-tight mb-3">{prompt.title}</h1>
+                <h1 className="font-display text-4xl uppercase leading-tight mb-3">
+                  {prompt.title}
+                </h1>
                 <p className="text-ink/70 mb-5">{prompt.description}</p>
 
                 <div className="flex items-center gap-3 mb-5 pb-5 border-b-2 border-ink">
@@ -440,7 +487,10 @@ function PromptDetail() {
                   </div>
                   <div className="ml-auto text-right">
                     <div className="text-accent-orange font-bold">
-                      ★ {avgRating !== null ? avgRating.toFixed(1) : (prompt.rating?.toFixed(1) || "N/A")}
+                      ★{" "}
+                      {avgRating !== null
+                        ? avgRating.toFixed(1)
+                        : prompt.rating?.toFixed(1) || "N/A"}
                     </div>
                     <div className="text-xs text-ink/60">{reviews.length} reviews</div>
                   </div>
@@ -521,7 +571,6 @@ function PromptDetail() {
                       </button>
                     </>
                   )}
-
                 </div>
 
                 <div className="flex flex-wrap gap-2 mt-5 pt-5 border-t-2 border-ink">
@@ -557,21 +606,25 @@ function PromptDetail() {
         </div>
 
         <section className="mt-20">
-          <h2 className="font-display text-3xl uppercase mb-6 border-b-4 border-ink pb-2">You might also love</h2>
+          <h2 className="font-display text-3xl uppercase mb-6 border-b-4 border-ink pb-2">
+            You might also love
+          </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
             {related.map((p) => (
-              <Link
-                key={p.id}
-                to="/prompt/$id"
-                params={{ id: p.id }}
-                className="block group"
-              >
+              <Link key={p.id} to="/prompt/$id" params={{ id: p.id }} className="block group">
                 <div className="border-2 border-ink overflow-hidden bg-white">
-                  <img src={p.image} alt={p.title} loading="lazy" className="w-full aspect-[4/3] object-cover group-hover:scale-105 transition-transform duration-500" />
+                  <img
+                    src={p.image}
+                    alt={p.title}
+                    loading="lazy"
+                    className="w-full aspect-[4/3] object-cover group-hover:scale-105 transition-transform duration-500"
+                  />
                 </div>
                 <div className="mt-2 flex justify-between items-start">
                   <span className="font-bold uppercase text-sm">{p.title}</span>
-                  <span className="text-magenta font-display">{p.price === 0 ? "FREE" : `$${p.price}`}</span>
+                  <span className="text-magenta font-display">
+                    {p.price === 0 ? "FREE" : `$${p.price}`}
+                  </span>
                 </div>
               </Link>
             ))}
@@ -604,41 +657,91 @@ function PromptDetail() {
       />
 
       {editOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4" role="dialog" aria-modal="true">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center px-4"
+          role="dialog"
+          aria-modal="true"
+        >
           <div className="absolute inset-0 bg-ink/60" onClick={() => setEditOpen(false)} />
           <div className="relative bg-white border-4 border-ink shadow-pop-lg w-full max-w-lg max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between p-5 border-b-4 border-ink bg-accent-yellow">
               <h2 className="font-display text-2xl uppercase">Edit Listing</h2>
-              <button onClick={() => setEditOpen(false)} className="font-bold text-lg hover:text-magenta">✕</button>
+              <button
+                onClick={() => setEditOpen(false)}
+                className="font-bold text-lg hover:text-magenta"
+              >
+                ✕
+              </button>
             </div>
             <form onSubmit={handleSaveEdit} className="overflow-y-auto flex-1 p-5 space-y-4">
               <div>
-                <label className="text-xs font-bold uppercase tracking-widest block mb-1">Title</label>
-                <input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} required minLength={2} maxLength={80}
-                  className="w-full border-2 border-ink p-2 font-bold text-sm focus:outline-none focus:ring-4 focus:ring-magenta/30" />
+                <label className="text-xs font-bold uppercase tracking-widest block mb-1">
+                  Title
+                </label>
+                <input
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  required
+                  minLength={2}
+                  maxLength={80}
+                  className="w-full border-2 border-ink p-2 font-bold text-sm focus:outline-none focus:ring-4 focus:ring-magenta/30"
+                />
               </div>
               <div>
-                <label className="text-xs font-bold uppercase tracking-widest block mb-1">Description</label>
-                <textarea value={editDescription} onChange={(e) => setEditDescription(e.target.value)} required rows={2} minLength={10} maxLength={280}
-                  className="w-full border-2 border-ink p-2 font-medium text-sm focus:outline-none focus:ring-4 focus:ring-magenta/30 resize-none" />
+                <label className="text-xs font-bold uppercase tracking-widest block mb-1">
+                  Description
+                </label>
+                <textarea
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  required
+                  rows={2}
+                  minLength={10}
+                  maxLength={280}
+                  className="w-full border-2 border-ink p-2 font-medium text-sm focus:outline-none focus:ring-4 focus:ring-magenta/30 resize-none"
+                />
               </div>
               <div>
-                <label className="text-xs font-bold uppercase tracking-widest block mb-1">Prompt Body</label>
-                <textarea value={editBody} onChange={(e) => setEditBody(e.target.value)} required rows={4} minLength={10} maxLength={2000}
-                  className="w-full border-2 border-ink p-2 font-mono text-sm focus:outline-none focus:ring-4 focus:ring-magenta/30 resize-none" />
+                <label className="text-xs font-bold uppercase tracking-widest block mb-1">
+                  Prompt Body
+                </label>
+                <textarea
+                  value={editBody}
+                  onChange={(e) => setEditBody(e.target.value)}
+                  required
+                  rows={4}
+                  minLength={10}
+                  maxLength={2000}
+                  className="w-full border-2 border-ink p-2 font-mono text-sm focus:outline-none focus:ring-4 focus:ring-magenta/30 resize-none"
+                />
               </div>
               <div>
-                <label className="text-xs font-bold uppercase tracking-widest block mb-1">Price (✦)</label>
-                <input type="number" value={editPrice} onChange={(e) => setEditPrice(Number(e.target.value))} min={0} max={49.99} step={0.01}
-                  className="w-full border-2 border-ink p-2 font-bold text-sm focus:outline-none focus:ring-4 focus:ring-magenta/30" />
+                <label className="text-xs font-bold uppercase tracking-widest block mb-1">
+                  Price (✦)
+                </label>
+                <input
+                  type="number"
+                  value={editPrice}
+                  onChange={(e) => setEditPrice(Number(e.target.value))}
+                  min={0}
+                  max={49.99}
+                  step={0.01}
+                  className="w-full border-2 border-ink p-2 font-bold text-sm focus:outline-none focus:ring-4 focus:ring-magenta/30"
+                />
               </div>
               <div className="flex gap-2 pt-2">
-                <button type="submit" disabled={saving}
-                  className="flex-1 bg-magenta text-white py-3 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all disabled:opacity-50">
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="flex-1 bg-magenta text-white py-3 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all disabled:opacity-50"
+                >
                   {saving ? "Saving…" : "Save Changes"}
                 </button>
-                <button type="button" onClick={() => setEditOpen(false)}
-                  className="px-5 bg-white text-ink py-3 font-display uppercase border-2 border-ink hover:bg-ink hover:text-white transition-colors">
+                <button
+                  type="button"
+                  onClick={() => setEditOpen(false)}
+                  className="px-5 bg-white text-ink py-3 font-display uppercase border-2 border-ink hover:bg-ink hover:text-white transition-colors"
+                >
                   Cancel
                 </button>
               </div>

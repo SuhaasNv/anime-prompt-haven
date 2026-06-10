@@ -12,7 +12,14 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { Mascot } from "@/components/Mascot";
 import { HoloBackground } from "@/components/HoloBackground";
-import { ACCENT_THEMES, ACCENT_THEME_STORAGE_KEY, applyAccentTheme, getStoredAccentTheme } from "@/lib/theme";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Toaster } from "@/components/ui/sonner";
+import {
+  ACCENT_THEMES,
+  ACCENT_THEME_STORAGE_KEY,
+  applyAccentTheme,
+  getStoredAccentTheme,
+} from "@/lib/theme";
 
 // Runs as a blocking inline script before the page paints, so a saved accent
 // theme takes effect immediately on a hard refresh — without it, the React
@@ -29,9 +36,7 @@ function NotFoundComponent() {
       <div className="max-w-md text-center">
         <h1 className="font-display text-[10rem] leading-none text-magenta">404</h1>
         <h2 className="mt-2 font-display text-3xl uppercase">Page not found</h2>
-        <p className="mt-3 text-sm text-ink/70">
-          That prompt has vanished into the multiverse.
-        </p>
+        <p className="mt-3 text-sm text-ink/70">That prompt has vanished into the multiverse.</p>
         <Link
           to="/"
           className="mt-6 inline-block bg-accent-orange text-white px-6 py-3 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all"
@@ -51,12 +56,13 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
         <h1 className="font-display text-3xl uppercase text-ink">Something glitched</h1>
-        <p className="mt-2 text-sm text-ink/70">
-          The holo-stream got tangled. Try again?
-        </p>
+        <p className="mt-2 text-sm text-ink/70">The holo-stream got tangled. Try again?</p>
         <div className="mt-6 flex flex-wrap justify-center gap-3">
           <button
-            onClick={() => { router.invalidate(); reset(); }}
+            onClick={() => {
+              router.invalidate();
+              reset();
+            }}
             className="bg-magenta text-white px-5 py-2 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all"
           >
             Retry
@@ -79,14 +85,25 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "PromptStar — AI Image Prompt Marketplace" },
-      { name: "description", content: "Browse, save, and collect AI image-generation prompts across every style and model. Pop idol holo aesthetic." },
+      {
+        name: "description",
+        content:
+          "Browse, save, and collect AI image-generation prompts across every style and model. Pop idol holo aesthetic.",
+      },
       { property: "og:title", content: "PromptStar — AI Image Prompt Marketplace" },
-      { property: "og:description", content: "Browse, save, and collect AI image-generation prompts across every style and model." },
+      {
+        property: "og:description",
+        content:
+          "Browse, save, and collect AI image-generation prompts across every style and model.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
     links: [
-      { rel: "icon", href: "data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22><text x=%2250%%22 y=%2275%%22 text-anchor=%22middle%22 dominant-baseline=%22middle%22 font-size=%2224%22>P!</text></svg>" },
+      {
+        rel: "icon",
+        href: "data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22><text x=%2250%%22 y=%2275%%22 text-anchor=%22middle%22 dominant-baseline=%22middle%22 font-size=%2224%22>P!</text></svg>",
+      },
       { rel: "preload", as: "image", href: "/src/assets/mascot-wave.png" },
       { rel: "stylesheet", href: appCss },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -135,6 +152,8 @@ function RootComponent() {
       <HoloBackground />
       <Outlet />
       <Mascot />
+      <Toaster richColors closeButton position="top-right" />
+      <ConfirmDialog />
     </QueryClientProvider>
   );
 }

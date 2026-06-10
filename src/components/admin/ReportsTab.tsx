@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
+import { toast } from "sonner";
 import { getReports, updateListingStatus } from "@/lib/api/admin.functions";
 
 export interface ReportWithListing {
@@ -37,7 +38,7 @@ export function ReportsTab({ reports, loading, onRefresh }: ReportsTabProps) {
       await updateListingStatus({ data: { listingId, status: "removed" } });
       onRefresh();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to remove listing");
+      toast.error(err instanceof Error ? err.message : "Failed to remove listing");
     } finally {
       setProcessing(null);
     }
@@ -50,7 +51,7 @@ export function ReportsTab({ reports, loading, onRefresh }: ReportsTabProps) {
       // For now, just show success and refresh
       onRefresh();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to dismiss report");
+      toast.error(err instanceof Error ? err.message : "Failed to dismiss report");
     } finally {
       setProcessing(null);
     }
@@ -83,16 +84,22 @@ export function ReportsTab({ reports, loading, onRefresh }: ReportsTabProps) {
             <div className="flex-1">
               <div className="flex items-center gap-3 mb-2">
                 <h3 className="font-display text-2xl uppercase">{report.listing_title}</h3>
-                <span className={`text-xs font-bold px-2 py-1 rounded ${
-                  report.listing_status === "removed" ? "bg-magenta text-white" : "bg-accent-yellow text-ink"
-                }`}>
+                <span
+                  className={`text-xs font-bold px-2 py-1 rounded ${
+                    report.listing_status === "removed"
+                      ? "bg-magenta text-white"
+                      : "bg-accent-yellow text-ink"
+                  }`}
+                >
                   {report.listing_status.toUpperCase()}
                 </span>
                 <span className="bg-magenta text-white text-xs font-bold px-2 py-1 rounded">
                   {report.report_count} reports
                 </span>
               </div>
-              <p className="text-xs text-ink/60 font-mono">Listing ID: {report.listing_id.slice(0, 8)}</p>
+              <p className="text-xs text-ink/60 font-mono">
+                Listing ID: {report.listing_id.slice(0, 8)}
+              </p>
               <p className="text-xs text-ink/60 mt-1">Reported by: {report.reporter_email}</p>
             </div>
           </div>
@@ -102,7 +109,9 @@ export function ReportsTab({ reports, loading, onRefresh }: ReportsTabProps) {
             <div className="space-y-1">
               <div className="flex justify-between">
                 <span className="font-bold">{REASON_LABELS[report.reason] || report.reason}</span>
-                <span className="text-ink/60">{new Date(report.created_at).toLocaleDateString()}</span>
+                <span className="text-ink/60">
+                  {new Date(report.created_at).toLocaleDateString()}
+                </span>
               </div>
               {report.note && <p className="text-xs text-ink/70">{report.note}</p>}
             </div>

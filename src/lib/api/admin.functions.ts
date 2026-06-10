@@ -41,7 +41,9 @@ export const getDashboardMetrics = createServerFn({ method: "GET" }).handler(asy
   const day7 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
   const day30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-  // Revenue metrics
+  // Revenue metrics — purchases and credit_transactions are unrelated tables,
+  // so they're aggregated as independent subqueries to avoid a join fan-out
+  // that would multiply each total by the other table's matching row count.
   const revenueResult = await db.query<{
     total24h: number;
     total7d: number;
@@ -49,13 +51,11 @@ export const getDashboardMetrics = createServerFn({ method: "GET" }).handler(asy
     platformFees24h: number;
   }>(
     `SELECT
-      COALESCE(SUM(CASE WHEN p.created_at >= $1 THEN p.price_paid ELSE 0 END), 0)::numeric AS total24h,
-      COALESCE(SUM(CASE WHEN p.created_at >= $2 THEN p.price_paid ELSE 0 END), 0)::numeric AS total7d,
-      COALESCE(SUM(CASE WHEN p.created_at >= $3 THEN p.price_paid ELSE 0 END), 0)::numeric AS total30d,
-      COALESCE(SUM(CASE WHEN ct.created_at >= $1 AND ct.type = 'platform_fee' THEN ABS(ct.amount) ELSE 0 END), 0)::numeric AS platformFees24h
-    FROM purchases p
-    LEFT JOIN credit_transactions ct ON ct.created_at >= $1`,
-    [day1, day7, day30]
+      (SELECT COALESCE(SUM(price_paid), 0) FROM purchases WHERE created_at >= $1)::numeric AS total24h,
+      (SELECT COALESCE(SUM(price_paid), 0) FROM purchases WHERE created_at >= $2)::numeric AS total7d,
+      (SELECT COALESCE(SUM(price_paid), 0) FROM purchases WHERE created_at >= $3)::numeric AS total30d,
+      (SELECT COALESCE(SUM(ABS(amount)), 0) FROM credit_transactions WHERE created_at >= $1 AND type = 'platform_fee')::numeric AS platformFees24h`,
+    [day1, day7, day30],
   );
 
   // User metrics
@@ -74,7 +74,7 @@ export const getDashboardMetrics = createServerFn({ method: "GET" }).handler(asy
       (SELECT COUNT(*) FROM users WHERE created_at IS NOT NULL)::integer AS totalUsers,
       (SELECT COUNT(*) FROM prompt_listings)::integer AS totalCreators
     FROM users LIMIT 1`,
-    [day1]
+    [day1],
   );
 
   // Content metrics
@@ -87,7 +87,7 @@ export const getDashboardMetrics = createServerFn({ method: "GET" }).handler(asy
       (SELECT COUNT(*) FROM prompt_listings WHERE status = 'flagged')::integer AS flaggedListings,
       (SELECT COUNT(DISTINCT listing_id) FROM reports)::integer AS pendingReports,
       (SELECT COUNT(*) FROM prompt_listings)::integer AS totalListings
-    FROM prompt_listings LIMIT 1`
+    FROM prompt_listings LIMIT 1`,
   );
 
   const revenue = revenueResult.rows[0] || {
@@ -165,7 +165,7 @@ export const getAuditLogs = createServerFn({ method: "GET" }).handler(async () =
     FROM audit_logs al
     JOIN users u ON u.id = al.admin_id
     ORDER BY al.created_at DESC
-    LIMIT 50`
+    LIMIT 50`,
   );
 
   return result.rows;
@@ -207,7 +207,7 @@ export const getReports = createServerFn({ method: "GET" }).handler(async () => 
     FROM reports r
     JOIN prompt_listings pl ON pl.id = r.listing_id
     JOIN users u ON u.id = r.reporter_id
-    ORDER BY report_count DESC, r.created_at DESC`
+    ORDER BY report_count DESC, r.created_at DESC`,
   );
 
   return result.rows;
@@ -227,11 +227,15 @@ export interface ListingWithStats {
   created_at: string;
 }
 
+export type ListingStatusFilter = "all" | "published" | "flagged" | "removed" | "draft";
+
 export const searchListings = createServerFn({ method: "POST" })
-  .inputValidator(z.object({
-    search: z.string().optional().default(""),
-    status: z.enum(["all", "published", "flagged", "removed", "draft"]).optional().default("all"),
-  }))
+  .inputValidator(
+    z.object({
+      search: z.string().optional().default(""),
+      status: z.enum(["all", "published", "flagged", "removed", "draft"]).optional().default("all"),
+    }),
+  )
   .handler(async ({ data }) => {
     const user = await getSessionUser();
     if (!user?.is_admin) {
@@ -276,10 +280,12 @@ export const searchListings = createServerFn({ method: "POST" })
   });
 
 export const updateListingStatus = createServerFn({ method: "POST" })
-  .inputValidator(z.object({
-    listingId: z.string().uuid(),
-    status: z.enum(["published", "flagged", "removed"]),
-  }))
+  .inputValidator(
+    z.object({
+      listingId: z.string().uuid(),
+      status: z.enum(["published", "flagged", "removed"]),
+    }),
+  )
   .handler(async ({ data }) => {
     const user = await getSessionUser();
     if (!user?.is_admin) {
@@ -287,12 +293,18 @@ export const updateListingStatus = createServerFn({ method: "POST" })
     }
 
     const db = getDb();
-    await db.query(
-      "UPDATE prompt_listings SET status = $1 WHERE id = $2",
-      [data.status, data.listingId]
-    );
+    await db.query("UPDATE prompt_listings SET status = $1 WHERE id = $2", [
+      data.status,
+      data.listingId,
+    ]);
 
-    await logAdminAction(db, user.id, "moderate_listing", data.listingId, `Status changed to ${data.status}`);
+    await logAdminAction(
+      db,
+      user.id,
+      "moderate_listing",
+      data.listingId,
+      `Status changed to ${data.status}`,
+    );
   });
 
 // User Management
@@ -308,9 +320,11 @@ export interface UserProfile {
 }
 
 export const searchUsers = createServerFn({ method: "POST" })
-  .inputValidator(z.object({
-    search: z.string().optional().default(""),
-  }))
+  .inputValidator(
+    z.object({
+      search: z.string().optional().default(""),
+    }),
+  )
   .handler(async ({ data }) => {
     const user = await getSessionUser();
     if (!user?.is_admin) {
@@ -350,11 +364,13 @@ export const searchUsers = createServerFn({ method: "POST" })
   });
 
 export const adjustUserCredits = createServerFn({ method: "POST" })
-  .inputValidator(z.object({
-    userId: z.string().uuid(),
-    amount: z.number(),
-    reason: z.string().min(1).max(300),
-  }))
+  .inputValidator(
+    z.object({
+      userId: z.string().uuid(),
+      amount: z.number(),
+      reason: z.string().min(1).max(300),
+    }),
+  )
   .handler(async ({ data }) => {
     const user = await getSessionUser();
     if (!user?.is_admin) {
@@ -362,29 +378,46 @@ export const adjustUserCredits = createServerFn({ method: "POST" })
     }
 
     const db = getDb();
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
 
-    // Initialize user_credits if needed
-    await db.query(
-      `INSERT INTO user_credits (user_id, balance) VALUES ($1, $2)
-       ON CONFLICT (user_id) DO NOTHING`,
-      [data.userId, 0]
-    );
+      // Initialize user_credits if needed
+      await client.query(
+        `INSERT INTO user_credits (user_id, balance) VALUES ($1, $2)
+         ON CONFLICT (user_id) DO NOTHING`,
+        [data.userId, 0],
+      );
 
-    // Update balance
-    await db.query(
-      `UPDATE user_credits SET balance = balance + $1, updated_at = now() WHERE user_id = $2`,
-      [data.amount, data.userId]
-    );
+      // Lock and update balance
+      await client.query(
+        `UPDATE user_credits SET balance = balance + $1, updated_at = now() WHERE user_id = $2`,
+        [data.amount, data.userId],
+      );
 
-    // Log transaction
-    await db.query(
-      `INSERT INTO credit_transactions (user_id, amount, type, note)
-       VALUES ($1, $2, 'bonus', $3)`,
-      [data.userId, data.amount, data.reason]
-    );
+      // Log transaction
+      await client.query(
+        `INSERT INTO credit_transactions (user_id, amount, type, note)
+         VALUES ($1, $2, 'bonus', $3)`,
+        [data.userId, data.amount, data.reason],
+      );
+
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
 
     // Log admin action
-    await logAdminAction(db, user.id, "credits_adjusted", data.userId, `${data.amount > 0 ? '+' : ''}${data.amount} credits: ${data.reason}`);
+    await logAdminAction(
+      db,
+      user.id,
+      "credits_adjusted",
+      data.userId,
+      `${data.amount > 0 ? "+" : ""}${data.amount} credits: ${data.reason}`,
+    );
   });
 
 // Financial Controls - Phase 3
@@ -424,7 +457,7 @@ export const getPendingPayouts = createServerFn({ method: "GET" }).handler(async
     FROM creator_payouts cp
     JOIN users u ON u.id = cp.creator_id
     WHERE cp.status IN ('pending', 'approved')
-    ORDER BY cp.status ASC, cp.created_at DESC`
+    ORDER BY cp.status ASC, cp.created_at DESC`,
   );
 
   return result.rows;
@@ -436,7 +469,7 @@ export const updatePayoutStatus = createServerFn({ method: "POST" })
       payoutId: z.string().uuid(),
       status: z.enum(["approved", "rejected", "paid"]),
       reason: z.string().optional(),
-    })
+    }),
   )
   .handler(async ({ data }) => {
     const user = await getSessionUser();
@@ -450,10 +483,16 @@ export const updatePayoutStatus = createServerFn({ method: "POST" })
       `UPDATE creator_payouts
        SET status = $1, approved_at = now(), approved_by = $2
        WHERE id = $3`,
-      [data.status, user.id, data.payoutId]
+      [data.status, user.id, data.payoutId],
     );
 
-    await logAdminAction(db, user.id, "payout_updated", data.payoutId, `Status: ${data.status}${data.reason ? ` - ${data.reason}` : ""}`);
+    await logAdminAction(
+      db,
+      user.id,
+      "payout_updated",
+      data.payoutId,
+      `Status: ${data.status}${data.reason ? ` - ${data.reason}` : ""}`,
+    );
   });
 
 // Disputes
@@ -498,7 +537,7 @@ export const getDisputes = createServerFn({ method: "GET" }).handler(async () =>
     JOIN users ub ON ub.id = d.buyer_id
     JOIN users us ON us.id = d.seller_id
     WHERE d.status IN ('open', 'under_review')
-    ORDER BY d.created_at DESC`
+    ORDER BY d.created_at DESC`,
   );
 
   return result.rows;
@@ -510,7 +549,7 @@ export const resolveDispute = createServerFn({ method: "POST" })
       disputeId: z.string().uuid(),
       winner: z.enum(["buyer", "seller", "settlement"]),
       resolution: z.string().min(10).max(500),
-    })
+    }),
   )
   .handler(async ({ data }) => {
     const user = await getSessionUser();
@@ -519,61 +558,90 @@ export const resolveDispute = createServerFn({ method: "POST" })
     }
 
     const db = getDb();
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
 
-    // Get dispute info to process refund if buyer wins
-    const disputeResult = await db.query<{ purchase_id: string; buyer_id: string; seller_id: string; amount_paid: string }>(
-      `SELECT purchase_id, buyer_id, seller_id, p.price_paid as amount_paid
-       FROM disputes d
-       JOIN purchases p ON p.id = d.purchase_id
-       WHERE d.id = $1`,
-      [data.disputeId]
-    );
+      // Lock the dispute row and get refund info in one go
+      const disputeResult = await client.query<{
+        purchase_id: string;
+        buyer_id: string;
+        seller_id: string;
+        amount_paid: string;
+      }>(
+        `SELECT d.purchase_id, d.buyer_id, d.seller_id, p.price_paid as amount_paid
+         FROM disputes d
+         JOIN purchases p ON p.id = d.purchase_id
+         WHERE d.id = $1 AND d.status IN ('open', 'under_review')
+         FOR UPDATE OF d`,
+        [data.disputeId],
+      );
 
-    if (disputeResult.rows.length === 0) {
-      throw new Error("Dispute not found");
+      if (disputeResult.rows.length === 0) {
+        await client.query("ROLLBACK");
+        throw new Error("Dispute not found or already resolved.");
+      }
+
+      const dispute = disputeResult.rows[0];
+      const refundAmount = parseFloat(dispute.amount_paid);
+
+      // Update dispute status (guarded again to make this atomic against concurrent resolutions)
+      const updateResult = await client.query(
+        `UPDATE disputes
+         SET status = 'resolved', winner = $1, resolution = $2, resolved_by = $3, resolved_at = now()
+         WHERE id = $4 AND status IN ('open', 'under_review')`,
+        [data.winner, data.resolution, user.id, data.disputeId],
+      );
+
+      if (updateResult.rowCount === 0) {
+        await client.query("ROLLBACK");
+        throw new Error("Dispute not found or already resolved.");
+      }
+
+      // Process refund if buyer wins
+      if (data.winner === "buyer") {
+        // Initialize buyer credits if needed
+        await client.query(
+          `INSERT INTO user_credits (user_id, balance) VALUES ($1, $2)
+           ON CONFLICT (user_id) DO NOTHING`,
+          [dispute.buyer_id, 0],
+        );
+
+        // Refund buyer
+        await client.query(
+          `UPDATE user_credits SET balance = balance + $1, updated_at = now() WHERE user_id = $2`,
+          [refundAmount, dispute.buyer_id],
+        );
+
+        await client.query(
+          `INSERT INTO credit_transactions (user_id, amount, type, note)
+           VALUES ($1, $2, 'refund', 'Dispute resolution - buyer won')`,
+          [dispute.buyer_id, refundAmount],
+        );
+
+        // Deduct from seller's earnings
+        await client.query(
+          `INSERT INTO credit_transactions (user_id, amount, type, note)
+           VALUES ($1, $2, 'refund', 'Dispute resolution - buyer refunded')`,
+          [dispute.seller_id, -refundAmount],
+        );
+      }
+
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
     }
 
-    const dispute = disputeResult.rows[0];
-    const refundAmount = parseFloat(dispute.amount_paid);
-
-    // Update dispute status
-    await db.query(
-      `UPDATE disputes
-       SET status = 'resolved', winner = $1, resolution = $2, resolved_by = $3, resolved_at = now()
-       WHERE id = $4`,
-      [data.winner, data.resolution, user.id, data.disputeId]
+    await logAdminAction(
+      db,
+      user.id,
+      "dispute_resolved",
+      data.disputeId,
+      `Winner: ${data.winner} - ${data.resolution}`,
     );
-
-    // Process refund if buyer wins
-    if (data.winner === "buyer") {
-      // Initialize buyer credits if needed
-      await db.query(
-        `INSERT INTO user_credits (user_id, balance) VALUES ($1, $2)
-         ON CONFLICT (user_id) DO NOTHING`,
-        [dispute.buyer_id, 0]
-      );
-
-      // Refund buyer
-      await db.query(
-        `UPDATE user_credits SET balance = balance + $1, updated_at = now() WHERE user_id = $2`,
-        [refundAmount, dispute.buyer_id]
-      );
-
-      await db.query(
-        `INSERT INTO credit_transactions (user_id, amount, type, note)
-         VALUES ($1, $2, 'refund', 'Dispute resolution - buyer won')`,
-        [dispute.buyer_id, refundAmount]
-      );
-
-      // Deduct from seller's earnings
-      await db.query(
-        `INSERT INTO credit_transactions (user_id, amount, type, note)
-         VALUES ($1, $2, 'refund', 'Dispute resolution - buyer refunded')`,
-        [dispute.seller_id, -refundAmount]
-      );
-    }
-
-    await logAdminAction(db, user.id, "dispute_resolved", data.disputeId, `Winner: ${data.winner} - ${data.resolution}`);
   });
 
 // GDPR & Data Retention
@@ -589,29 +657,57 @@ export const exportUserDataGDPR = createServerFn({ method: "POST" })
     const db = getDb();
 
     // Fetch all user data
-    const userResult = await db.query<any>(
-      `SELECT id, email, username, mascot, is_admin, created_at FROM users WHERE id = $1`,
-      [data.userId]
-    );
+    const userResult = await db.query<{
+      id: string;
+      email: string;
+      username: string;
+      mascot: string;
+      is_admin: boolean;
+      created_at: string;
+    }>(`SELECT id, email, username, mascot, is_admin, created_at FROM users WHERE id = $1`, [
+      data.userId,
+    ]);
 
-    const purchasesResult = await db.query<any>(
-      `SELECT id, listing_id, price_paid, created_at FROM purchases WHERE buyer_id = $1`,
-      [data.userId]
-    );
+    const purchasesResult = await db.query<{
+      id: string;
+      listing_id: string;
+      price_paid: string;
+      created_at: string;
+    }>(`SELECT id, listing_id, price_paid, created_at FROM purchases WHERE buyer_id = $1`, [
+      data.userId,
+    ]);
 
-    const listingsResult = await db.query<any>(
+    const listingsResult = await db.query<{
+      id: string;
+      title: string;
+      description: string | null;
+      price: string;
+      status: string;
+      created_at: string;
+    }>(
       `SELECT id, title, description, price, status, created_at FROM prompt_listings WHERE user_id = $1`,
-      [data.userId]
+      [data.userId],
     );
 
-    const reviewsResult = await db.query<any>(
-      `SELECT id, listing_id, rating, body, created_at FROM reviews WHERE user_id = $1`,
-      [data.userId]
-    );
+    const reviewsResult = await db.query<{
+      id: string;
+      listing_id: string;
+      rating: number;
+      body: string | null;
+      created_at: string;
+    }>(`SELECT id, listing_id, rating, body, created_at FROM reviews WHERE user_id = $1`, [
+      data.userId,
+    ]);
 
-    const creditsResult = await db.query<any>(
+    const creditsResult = await db.query<{
+      id: string;
+      amount: string;
+      type: string;
+      note: string | null;
+      created_at: string;
+    }>(
       `SELECT id, amount, type, note, created_at FROM credit_transactions WHERE user_id = $1 ORDER BY created_at DESC`,
-      [data.userId]
+      [data.userId],
     );
 
     const exportData = {
@@ -633,7 +729,7 @@ export const deleteUserAccount = createServerFn({ method: "POST" })
     z.object({
       userId: z.string().uuid(),
       reason: z.string().min(1).max(300),
-    })
+    }),
   )
   .handler(async ({ data }) => {
     const user = await getSessionUser();
@@ -643,11 +739,18 @@ export const deleteUserAccount = createServerFn({ method: "POST" })
 
     const db = getDb();
 
-    // Archive user data
-    const userResult = await db.query<any>(
-      `SELECT * FROM users WHERE id = $1`,
-      [data.userId]
-    );
+    // Archive user data (excluding password_hash — never persist auth secrets in the archive)
+    const userResult = await db.query<{
+      id: string;
+      email: string;
+      username: string;
+      mascot: string;
+      is_admin: boolean;
+      bio: string | null;
+      created_at: string;
+    }>(`SELECT id, email, username, mascot, is_admin, bio, created_at FROM users WHERE id = $1`, [
+      data.userId,
+    ]);
 
     if (userResult.rows.length === 0) {
       throw new Error("User not found");
@@ -660,7 +763,7 @@ export const deleteUserAccount = createServerFn({ method: "POST" })
     await db.query(
       `INSERT INTO deleted_users_archive (user_id, email_hash, data_json, retention_until)
        VALUES ($1, $2, $3, now() + interval '2 years')`,
-      [data.userId, emailHash, JSON.stringify(userData)]
+      [data.userId, emailHash, JSON.stringify(userData)],
     );
 
     // Anonymize user data
@@ -670,8 +773,11 @@ export const deleteUserAccount = createServerFn({ method: "POST" })
            username = 'deleted_' || substring(id::text, 1, 8),
            is_admin = false
        WHERE id = $1`,
-      [data.userId]
+      [data.userId],
     );
+
+    // Revoke any active sessions so a deleted account can't keep using the app
+    await db.query(`DELETE FROM sessions WHERE user_id = $1`, [data.userId]);
 
     await logAdminAction(db, user.id, "user_deleted", data.userId, `Reason: ${data.reason}`);
   });

@@ -1,6 +1,11 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { searchListings, updateListingStatus } from "@/lib/api/admin.functions";
+import { toast } from "sonner";
+import {
+  searchListings,
+  updateListingStatus,
+  type ListingStatusFilter,
+} from "@/lib/api/admin.functions";
 
 export interface ListingWithStats {
   id: string;
@@ -20,8 +25,8 @@ interface ListingsTabProps {
   loading: boolean;
   search: string;
   onSearchChange: (search: string) => void;
-  onStatusChange: (status: string) => void;
-  statusFilter: string;
+  onStatusChange: (status: ListingStatusFilter) => void;
+  statusFilter: ListingStatusFilter;
 }
 
 export function ListingsTab({
@@ -42,7 +47,7 @@ export function ListingsTab({
       });
       // Refresh will happen through parent component
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to update listing");
+      toast.error(err instanceof Error ? err.message : "Failed to update listing");
     } finally {
       setProcessing(null);
     }
@@ -67,7 +72,7 @@ export function ListingsTab({
             <label className="block text-xs font-bold uppercase text-ink/70 mb-2">Status</label>
             <select
               value={statusFilter}
-              onChange={(e) => onStatusChange(e.target.value)}
+              onChange={(e) => onStatusChange(e.target.value as ListingStatusFilter)}
               className="w-full px-3 py-2 border-2 border-ink font-mono text-sm"
             >
               <option value="all">All Statuses</option>
@@ -102,15 +107,21 @@ export function ListingsTab({
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
                     <h3 className="font-display text-2xl uppercase">{listing.title}</h3>
-                    <span className={`text-xs font-bold px-2 py-1 rounded ${
-                      listing.status === "published" ? "bg-holo-purple text-white"
-                        : listing.status === "flagged" ? "bg-accent-yellow text-ink"
-                        : "bg-magenta text-white"
-                    }`}>
+                    <span
+                      className={`text-xs font-bold px-2 py-1 rounded ${
+                        listing.status === "published"
+                          ? "bg-holo-purple text-white"
+                          : listing.status === "flagged"
+                            ? "bg-accent-yellow text-ink"
+                            : "bg-magenta text-white"
+                      }`}
+                    >
                       {listing.status.toUpperCase()}
                     </span>
                   </div>
-                  <p className="text-xs text-ink/60">By @{listing.username} · ✦{listing.price.toFixed(2)}</p>
+                  <p className="text-xs text-ink/60">
+                    By @{listing.username} · ✦{listing.price.toFixed(2)}
+                  </p>
                   <p className="text-xs text-ink/60 font-mono mt-1">ID: {listing.id.slice(0, 8)}</p>
                 </div>
               </div>
@@ -127,13 +138,19 @@ export function ListingsTab({
                   </div>
                   <div>
                     <span className="font-bold">Reports</span>
-                    <div className={listing.report_count > 0 ? "text-magenta font-bold" : "text-ink/50"}>
+                    <div
+                      className={
+                        listing.report_count > 0 ? "text-magenta font-bold" : "text-ink/50"
+                      }
+                    >
                       {listing.report_count}
                     </div>
                   </div>
                   <div>
                     <span className="font-bold">Created</span>
-                    <div className="text-ink/60">{new Date(listing.created_at).toLocaleDateString()}</div>
+                    <div className="text-ink/60">
+                      {new Date(listing.created_at).toLocaleDateString()}
+                    </div>
                   </div>
                 </div>
               </div>

@@ -1,6 +1,15 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { getPendingPayouts, updatePayoutStatus, getDisputes, resolveDispute, exportUserDataGDPR, deleteUserAccount } from "@/lib/api/admin.functions";
+import { toast } from "sonner";
+import { confirm } from "@/components/ui/confirm-dialog";
+import {
+  getPendingPayouts,
+  updatePayoutStatus,
+  getDisputes,
+  resolveDispute,
+  exportUserDataGDPR,
+  deleteUserAccount,
+} from "@/lib/api/admin.functions";
 
 type FinancialSubTab = "payouts" | "disputes" | "compliance";
 
@@ -48,7 +57,11 @@ export function FinancialTab({
 }: FinancialTabProps) {
   const [subTab, setSubTab] = useState<FinancialSubTab>("payouts");
   const [processing, setProcessing] = useState<string | null>(null);
-  const [resolvingDispute, setResolvingDispute] = useState<{ disputeId: string; winner: string; resolution: string } | null>(null);
+  const [resolvingDispute, setResolvingDispute] = useState<{
+    disputeId: string;
+    winner: string;
+    resolution: string;
+  } | null>(null);
   const [gdprUserId, setGdprUserId] = useState("");
   const [deleteUserId, setDeleteUserId] = useState("");
   const [deleteReason, setDeleteReason] = useState("");
@@ -61,7 +74,7 @@ export function FinancialTab({
       });
       onPayoutUpdated();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to update payout");
+      toast.error(err instanceof Error ? err.message : "Failed to update payout");
     } finally {
       setProcessing(null);
     }
@@ -82,7 +95,7 @@ export function FinancialTab({
       setResolvingDispute(null);
       onDisputeResolved();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to resolve dispute");
+      toast.error(err instanceof Error ? err.message : "Failed to resolve dispute");
     } finally {
       setProcessing(null);
     }
@@ -101,19 +114,23 @@ export function FinancialTab({
       a.click();
       setGdprUserId("");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to export user data");
+      toast.error(err instanceof Error ? err.message : "Failed to export user data");
     }
   };
 
   const handleDeleteUser = async () => {
     if (!deleteUserId || !deleteReason) {
-      alert("Please fill in all fields");
+      toast.error("Please fill in all fields");
       return;
     }
 
-    if (!confirm(`Are you sure? This will anonymize all user data for ${deleteUserId}`)) {
-      return;
-    }
+    const confirmed = await confirm({
+      title: "Delete user account?",
+      description: `Are you sure? This will anonymize all user data for ${deleteUserId}`,
+      confirmText: "Delete",
+      destructive: true,
+    });
+    if (!confirmed) return;
 
     setProcessing(deleteUserId);
     try {
@@ -122,9 +139,9 @@ export function FinancialTab({
       });
       setDeleteUserId("");
       setDeleteReason("");
-      alert("User account deleted and data archived");
+      toast.success("User account deleted and data archived");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to delete user");
+      toast.error(err instanceof Error ? err.message : "Failed to delete user");
     } finally {
       setProcessing(null);
     }
@@ -174,15 +191,25 @@ export function FinancialTab({
                   <div className="flex items-start justify-between gap-4 mb-4">
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-2">
-                        <h3 className="font-display text-2xl uppercase">✦ {payout.amount.toFixed(2)}</h3>
-                        <span className={`text-xs font-bold px-2 py-1 rounded ${
-                          payout.status === "pending" ? "bg-accent-yellow text-ink" : "bg-holo-purple text-white"
-                        }`}>
+                        <h3 className="font-display text-2xl uppercase">
+                          ✦ {payout.amount.toFixed(2)}
+                        </h3>
+                        <span
+                          className={`text-xs font-bold px-2 py-1 rounded ${
+                            payout.status === "pending"
+                              ? "bg-accent-yellow text-ink"
+                              : "bg-holo-purple text-white"
+                          }`}
+                        >
                           {payout.status.toUpperCase()}
                         </span>
                       </div>
-                      <p className="text-xs text-ink/60">To: {payout.creator_username} ({payout.creator_email})</p>
-                      <p className="text-xs text-ink/60 mt-1 font-mono">Payout ID: {payout.id.slice(0, 8)}</p>
+                      <p className="text-xs text-ink/60">
+                        To: {payout.creator_username} ({payout.creator_email})
+                      </p>
+                      <p className="text-xs text-ink/60 mt-1 font-mono">
+                        Payout ID: {payout.id.slice(0, 8)}
+                      </p>
                     </div>
                   </div>
 
@@ -190,11 +217,17 @@ export function FinancialTab({
                     <div className="grid grid-cols-2 gap-4 text-xs">
                       <div>
                         <span className="font-bold">Requested</span>
-                        <div className="text-ink/60">{new Date(payout.created_at).toLocaleDateString()}</div>
+                        <div className="text-ink/60">
+                          {new Date(payout.created_at).toLocaleDateString()}
+                        </div>
                       </div>
                       <div>
                         <span className="font-bold">Bank Account</span>
-                        <div className="text-ink/60 font-mono">{payout.bank_account ? payout.bank_account.slice(-4).padStart(8, "*") : "—"}</div>
+                        <div className="text-ink/60 font-mono">
+                          {payout.bank_account
+                            ? payout.bank_account.slice(-4).padStart(8, "*")
+                            : "—"}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -258,7 +291,9 @@ export function FinancialTab({
                   <div className="mb-4">
                     <div className="flex items-center gap-3 mb-2">
                       <h3 className="font-display text-2xl uppercase">{dispute.listing_title}</h3>
-                      <span className="bg-magenta text-white text-xs font-bold px-2 py-1 rounded">✦ {dispute.amount_paid.toFixed(2)}</span>
+                      <span className="bg-magenta text-white text-xs font-bold px-2 py-1 rounded">
+                        ✦ {dispute.amount_paid.toFixed(2)}
+                      </span>
                     </div>
                     <p className="text-xs text-ink/60">Dispute ID: {dispute.id.slice(0, 8)}</p>
                   </div>
@@ -283,10 +318,14 @@ export function FinancialTab({
                   {resolvingDispute?.disputeId === dispute.id ? (
                     <div className="mb-4 p-4 bg-accent-yellow border-2 border-ink space-y-3">
                       <div>
-                        <label className="block text-xs font-bold uppercase text-ink/70 mb-2">Winner</label>
+                        <label className="block text-xs font-bold uppercase text-ink/70 mb-2">
+                          Winner
+                        </label>
                         <select
                           value={resolvingDispute.winner}
-                          onChange={(e) => setResolvingDispute({ ...resolvingDispute, winner: e.target.value })}
+                          onChange={(e) =>
+                            setResolvingDispute({ ...resolvingDispute, winner: e.target.value })
+                          }
                           className="w-full px-3 py-2 border-2 border-ink font-mono text-sm"
                         >
                           <option value="">Select…</option>
@@ -296,10 +335,14 @@ export function FinancialTab({
                         </select>
                       </div>
                       <div>
-                        <label className="block text-xs font-bold uppercase text-ink/70 mb-2">Resolution</label>
+                        <label className="block text-xs font-bold uppercase text-ink/70 mb-2">
+                          Resolution
+                        </label>
                         <textarea
                           value={resolvingDispute.resolution}
-                          onChange={(e) => setResolvingDispute({ ...resolvingDispute, resolution: e.target.value })}
+                          onChange={(e) =>
+                            setResolvingDispute({ ...resolvingDispute, resolution: e.target.value })
+                          }
                           placeholder="Explain the resolution…"
                           className="w-full px-3 py-2 border-2 border-ink font-mono text-sm"
                           rows={3}
@@ -323,7 +366,9 @@ export function FinancialTab({
                     </div>
                   ) : (
                     <button
-                      onClick={() => setResolvingDispute({ disputeId: dispute.id, winner: "", resolution: "" })}
+                      onClick={() =>
+                        setResolvingDispute({ disputeId: dispute.id, winner: "", resolution: "" })
+                      }
                       className="w-full bg-holo-purple text-white py-3 font-bold uppercase border-2 border-ink text-sm shadow-[3px_3px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all"
                     >
                       ⚖️ Review & Resolve
@@ -363,11 +408,17 @@ export function FinancialTab({
 
           {/* Account Deletion */}
           <div className="bg-white border-4 border-ink p-6 shadow-pop">
-            <h3 className="font-display text-xl uppercase mb-4 text-magenta">🗑️ Account Deletion & Anonymization</h3>
-            <p className="text-xs text-ink/70 mb-4">Permanently anonymize user account. Data archived for 2 years per GDPR.</p>
+            <h3 className="font-display text-xl uppercase mb-4 text-magenta">
+              🗑️ Account Deletion & Anonymization
+            </h3>
+            <p className="text-xs text-ink/70 mb-4">
+              Permanently anonymize user account. Data archived for 2 years per GDPR.
+            </p>
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-bold uppercase text-ink/70 mb-2">User ID</label>
+                <label className="block text-xs font-bold uppercase text-ink/70 mb-2">
+                  User ID
+                </label>
                 <input
                   type="text"
                   value={deleteUserId}
@@ -377,7 +428,9 @@ export function FinancialTab({
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold uppercase text-ink/70 mb-2">Reason for Deletion</label>
+                <label className="block text-xs font-bold uppercase text-ink/70 mb-2">
+                  Reason for Deletion
+                </label>
                 <textarea
                   value={deleteReason}
                   onChange={(e) => setDeleteReason(e.target.value)}

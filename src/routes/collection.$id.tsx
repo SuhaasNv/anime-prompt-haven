@@ -1,6 +1,8 @@
 import { createFileRoute, Link, notFound, redirect, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
+import { toast } from "sonner";
 import { Navbar } from "@/components/Navbar";
+import { confirm } from "@/components/ui/confirm-dialog";
 import { Switch } from "@/components/ui/switch";
 import { CURRENT_USER_QUERY_KEY, getCurrentUser } from "@/lib/api/auth.functions";
 import {
@@ -48,7 +50,7 @@ export const Route = createFileRoute("/collection/$id")({
       const publicCollection = await getPublicCollection({ data: { id: params.id } });
       if (publicCollection) {
         const resolvedPrompts = await Promise.all(
-          publicCollection.promptIds.map((id) => resolvePrompt(id))
+          publicCollection.promptIds.map((id) => resolvePrompt(id)),
         );
         const prompts = resolvedPrompts.filter((p): p is Prompt => p !== null);
         return {
@@ -72,7 +74,7 @@ export const Route = createFileRoute("/collection/$id")({
 
       // Resolve all prompts in the collection (from both DB and mock data)
       const resolvedPrompts = await Promise.all(
-        collection.promptIds.map((id) => resolvePrompt(id))
+        collection.promptIds.map((id) => resolvePrompt(id)),
       );
       // Filter out null values (deleted prompts)
       const prompts = resolvedPrompts.filter((p): p is Prompt => p !== null);
@@ -102,9 +104,16 @@ export const Route = createFileRoute("/collection/$id")({
       <Navbar />
       <main className="relative z-10 px-6 md:px-12 py-10 flex items-center justify-center min-h-[80vh]">
         <div className="text-center">
-          <h1 className="font-display text-5xl uppercase text-magenta mb-4">Collection Not Found</h1>
-          <p className="text-ink/60 mb-6">This collection no longer exists or you don't have access to it.</p>
-          <Link to="/dashboard" className="inline-block bg-magenta text-white px-6 py-3 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all">
+          <h1 className="font-display text-5xl uppercase text-magenta mb-4">
+            Collection Not Found
+          </h1>
+          <p className="text-ink/60 mb-6">
+            This collection no longer exists or you don't have access to it.
+          </p>
+          <Link
+            to="/dashboard"
+            className="inline-block bg-magenta text-white px-6 py-3 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all"
+          >
             ← Back to Binder
           </Link>
         </div>
@@ -116,10 +125,15 @@ export const Route = createFileRoute("/collection/$id")({
       <Navbar />
       <main className="relative z-10 px-6 md:px-12 py-10 flex items-center justify-center min-h-[80vh]">
         <div className="text-center">
-          <h1 className="font-display text-5xl uppercase text-magenta mb-4">⚠️ Something Went Wrong</h1>
+          <h1 className="font-display text-5xl uppercase text-magenta mb-4">
+            ⚠️ Something Went Wrong
+          </h1>
           <p className="text-ink/60 mb-2">Error: {error?.message || "Unknown error"}</p>
           <p className="text-sm text-ink/50 mb-6 font-mono">{error?.stack}</p>
-          <Link to="/dashboard" className="inline-block bg-magenta text-white px-6 py-3 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all">
+          <Link
+            to="/dashboard"
+            className="inline-block bg-magenta text-white px-6 py-3 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all"
+          >
             ← Back to Binder
           </Link>
         </div>
@@ -135,7 +149,15 @@ const colorMap = {
   purple: { bg: "bg-holo-purple", border: "border-holo-purple", shadow: "shadow-pop-purple" },
 } as const;
 
-function AddPromptPicker({ collectionId, savedIds, onClose }: { collectionId: string; savedIds: string[]; onClose: () => void }) {
+function AddPromptPicker({
+  collectionId,
+  savedIds,
+  onClose,
+}: {
+  collectionId: string;
+  savedIds: string[];
+  onClose: () => void;
+}) {
   const router = useRouter();
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -158,7 +180,9 @@ function AddPromptPicker({ collectionId, savedIds, onClose }: { collectionId: st
     <div className="bg-white border-4 border-ink p-6 shadow-pop-lg mb-10">
       <div className="flex justify-between items-start mb-4">
         <h2 className="font-display text-2xl uppercase">Add prompts to this collection</h2>
-        <button onClick={onClose} className="font-bold uppercase text-xs hover:text-magenta">Close ✕</button>
+        <button onClick={onClose} className="font-bold uppercase text-xs hover:text-magenta">
+          Close ✕
+        </button>
       </div>
       {error && <p className="text-xs font-bold text-magenta mb-3">{error}</p>}
       {available.length === 0 ? (
@@ -167,7 +191,12 @@ function AddPromptPicker({ collectionId, savedIds, onClose }: { collectionId: st
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {available.map((p) => (
             <div key={p.id} className="flex items-center gap-3 border-2 border-ink p-2">
-              <img src={p.image} alt={p.title} loading="lazy" className="size-14 object-cover border-2 border-ink shrink-0" />
+              <img
+                src={p.image}
+                alt={p.title}
+                loading="lazy"
+                className="size-14 object-cover border-2 border-ink shrink-0"
+              />
               <div className="min-w-0 flex-1">
                 <div className="font-bold uppercase text-sm truncate">{p.title}</div>
                 <div className="text-xs text-ink/60">@{p.creator}</div>
@@ -204,20 +233,26 @@ function CollectionDetail() {
       await removePromptFromCollection({ data: { collectionId: collection.id, promptId } });
       await router.invalidate();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to remove prompt");
+      toast.error(err instanceof Error ? err.message : "Failed to remove prompt");
     } finally {
       setRemoving(null);
     }
   };
 
   const handleDeleteCollection = async () => {
-    if (!confirm(`Delete "${collection.name}"? This cannot be undone.`)) return;
+    const confirmed = await confirm({
+      title: "Delete collection?",
+      description: `Delete "${collection.name}"? This cannot be undone.`,
+      confirmText: "Delete",
+      destructive: true,
+    });
+    if (!confirmed) return;
     setDeletingCol(true);
     try {
       await deleteCollection({ data: { id: collection.id } });
       await router.navigate({ to: "/dashboard" });
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to delete collection");
+      toast.error(err instanceof Error ? err.message : "Failed to delete collection");
       setDeletingCol(false);
     }
   };
@@ -228,7 +263,7 @@ function CollectionDetail() {
       const result = await toggleCollectionVisibility({ data: { id: collection.id } });
       setIsPublic(result.isPublic);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to update visibility");
+      toast.error(err instanceof Error ? err.message : "Failed to update visibility");
     } finally {
       setTogglingVisibility(false);
     }
@@ -244,14 +279,19 @@ function CollectionDetail() {
     <div className="min-h-screen">
       <Navbar />
       <main className="relative z-10 px-6 md:px-12 py-10">
-        <Link to="/dashboard" className="inline-block text-sm font-bold uppercase tracking-wider mb-6 hover:text-magenta transition-colors">
+        <Link
+          to="/dashboard"
+          className="inline-block text-sm font-bold uppercase tracking-wider mb-6 hover:text-magenta transition-colors"
+        >
           ← Back to Binder
         </Link>
 
         <div className={`bg-white border-4 border-ink p-8 ${colors.shadow} mb-10`}>
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
             <div>
-              <div className="text-xs font-bold uppercase tracking-widest text-ink/60">{collection.vibe || "No vibe yet"}</div>
+              <div className="text-xs font-bold uppercase tracking-widest text-ink/60">
+                {collection.vibe || "No vibe yet"}
+              </div>
               <h1 className="font-display text-5xl md:text-7xl uppercase leading-none mt-2">
                 {collection.name}
               </h1>
@@ -259,7 +299,11 @@ function CollectionDetail() {
               {!isOwner && (
                 <p className="mt-1 text-xs font-bold uppercase tracking-wider text-ink/60">
                   by{" "}
-                  <Link to="/u/$username" params={{ username: collection.username }} className="text-magenta hover:underline">
+                  <Link
+                    to="/u/$username"
+                    params={{ username: collection.username }}
+                    className="text-magenta hover:underline"
+                  >
                     @{collection.username}
                   </Link>
                 </p>
@@ -268,8 +312,14 @@ function CollectionDetail() {
             <div className="flex flex-col items-end gap-3">
               {isOwner && (
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold uppercase tracking-wider">{isPublic ? "🌐 Public" : "🔒 Private"}</span>
-                  <Switch checked={isPublic} disabled={togglingVisibility} onCheckedChange={handleToggleVisibility} />
+                  <span className="text-xs font-bold uppercase tracking-wider">
+                    {isPublic ? "🌐 Public" : "🔒 Private"}
+                  </span>
+                  <Switch
+                    checked={isPublic}
+                    disabled={togglingVisibility}
+                    onCheckedChange={handleToggleVisibility}
+                  />
                 </div>
               )}
               {isPublic && (
@@ -302,7 +352,11 @@ function CollectionDetail() {
         </div>
 
         {isOwner && adding && (
-          <AddPromptPicker collectionId={collection.id} savedIds={collection.promptIds} onClose={() => setAdding(false)} />
+          <AddPromptPicker
+            collectionId={collection.id}
+            savedIds={collection.promptIds}
+            onClose={() => setAdding(false)}
+          />
         )}
 
         {prompts.length === 0 ? (
@@ -311,7 +365,9 @@ function CollectionDetail() {
             <p className="font-display text-2xl uppercase text-ink/40">Empty Collection</p>
             {isOwner ? (
               <>
-                <p className="text-sm text-ink/60 mt-3 mb-6">Add your saved prompts to get started.</p>
+                <p className="text-sm text-ink/60 mt-3 mb-6">
+                  Add your saved prompts to get started.
+                </p>
                 <button
                   onClick={() => setAdding(true)}
                   className={`${colors.bg} text-ink px-6 py-3 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all`}
@@ -326,10 +382,18 @@ function CollectionDetail() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {prompts.map((p) => (
-              <div key={p.id} className="relative bg-white border-2 border-ink hover:shadow-pop transition-all">
+              <div
+                key={p.id}
+                className="relative bg-white border-2 border-ink hover:shadow-pop transition-all"
+              >
                 <Link to="/prompt/$id" params={{ id: p.id }} className="block p-4">
                   <div className="flex gap-4">
-                    <img src={p.image} alt={p.title} loading="lazy" className="size-24 object-cover border-2 border-ink shrink-0" />
+                    <img
+                      src={p.image}
+                      alt={p.title}
+                      loading="lazy"
+                      className="size-24 object-cover border-2 border-ink shrink-0"
+                    />
                     <div className="min-w-0 flex-1 pr-6">
                       <h3 className="font-bold uppercase truncate">{p.title}</h3>
                       <p className="text-xs text-ink/60 mt-1 line-clamp-2">{p.description}</p>

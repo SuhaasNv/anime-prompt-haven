@@ -1,6 +1,9 @@
-import { Pool } from "pg";
+import { Pool, type PoolClient } from "pg";
 
 import { getServerConfig } from "./config.server";
+
+/** A pool or a checked-out client — anything you can call `.query()` on. */
+export type DbClient = Pool | PoolClient;
 
 let pool: Pool | undefined;
 

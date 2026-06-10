@@ -1,9 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import type { Pool } from "pg";
 
 import { getSessionUser } from "../auth.server";
-import { getDb } from "../db.server";
+import { getDb, type DbClient } from "../db.server";
 
 export type NotificationType = "prompt_sold" | "review_received" | "report_resolved";
 
@@ -22,26 +21,26 @@ export interface Notification {
  * notification bug can't fail the purchase/review/moderation it's attached to.
  */
 export async function insertNotification(
-  db: Pool,
+  db: DbClient,
   userId: string,
   type: NotificationType,
   title: string,
   body?: string,
-  referenceId?: string
+  referenceId?: string,
 ): Promise<void> {
   try {
     await db.query(
       `INSERT INTO notifications (user_id, type, title, body, reference_id)
        VALUES ($1, $2, $3, $4, $5)`,
-      [userId, type, title, body ?? null, referenceId ?? null]
+      [userId, type, title, body ?? null, referenceId ?? null],
     );
   } catch (err) {
     console.error("Failed to insert notification:", err);
   }
 }
 
-export const listNotifications = createServerFn({ method: "GET" })
-  .handler(async (): Promise<Notification[]> => {
+export const listNotifications = createServerFn({ method: "GET" }).handler(
+  async (): Promise<Notification[]> => {
     const user = await getSessionUser();
     if (!user) return [];
 
@@ -60,7 +59,7 @@ export const listNotifications = createServerFn({ method: "GET" })
        WHERE user_id = $1
        ORDER BY created_at DESC
        LIMIT 20`,
-      [user.id]
+      [user.id],
     );
 
     return result.rows.map((row) => ({
@@ -72,35 +71,35 @@ export const listNotifications = createServerFn({ method: "GET" })
       isRead: row.is_read,
       createdAt: row.created_at,
     }));
-  });
+  },
+);
 
-export const getUnreadCount = createServerFn({ method: "GET" })
-  .handler(async (): Promise<{ count: number }> => {
+export const getUnreadCount = createServerFn({ method: "GET" }).handler(
+  async (): Promise<{ count: number }> => {
     const user = await getSessionUser();
     if (!user) return { count: 0 };
 
     const db = getDb();
     const result = await db.query<{ count: string }>(
       "SELECT COUNT(*) as count FROM notifications WHERE user_id = $1 AND is_read = false",
-      [user.id]
+      [user.id],
     );
 
     return { count: parseInt(result.rows[0].count, 10) };
-  });
+  },
+);
 
-export const markAllRead = createServerFn({ method: "POST" })
-  .handler(async () => {
-    const user = await getSessionUser();
-    if (!user) throw new Error("You must be signed in.");
+export const markAllRead = createServerFn({ method: "POST" }).handler(async () => {
+  const user = await getSessionUser();
+  if (!user) throw new Error("You must be signed in.");
 
-    const db = getDb();
-    await db.query(
-      "UPDATE notifications SET is_read = true WHERE user_id = $1 AND is_read = false",
-      [user.id]
-    );
+  const db = getDb();
+  await db.query("UPDATE notifications SET is_read = true WHERE user_id = $1 AND is_read = false", [
+    user.id,
+  ]);
 
-    return { ok: true as const };
-  });
+  return { ok: true as const };
+});
 
 export const markOneRead = createServerFn({ method: "POST" })
   .inputValidator(z.object({ id: z.string().uuid() }))
@@ -109,10 +108,10 @@ export const markOneRead = createServerFn({ method: "POST" })
     if (!user) throw new Error("You must be signed in.");
 
     const db = getDb();
-    await db.query(
-      "UPDATE notifications SET is_read = true WHERE id = $1 AND user_id = $2",
-      [data.id, user.id]
-    );
+    await db.query("UPDATE notifications SET is_read = true WHERE id = $1 AND user_id = $2", [
+      data.id,
+      user.id,
+    ]);
 
     return { ok: true as const };
   });

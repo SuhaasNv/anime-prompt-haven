@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
+import { toast } from "sonner";
 import { searchUsers, adjustUserCredits } from "@/lib/api/admin.functions";
 
 export interface UserProfile {
@@ -23,7 +24,11 @@ interface UsersTabProps {
 
 export function UsersTab({ users, loading, search, onSearchChange, onUserUpdated }: UsersTabProps) {
   const [processing, setProcessing] = useState<string | null>(null);
-  const [adjustingCredits, setAdjustingCredits] = useState<{ userId: string; amount: string; reason: string } | null>(null);
+  const [adjustingCredits, setAdjustingCredits] = useState<{
+    userId: string;
+    amount: string;
+    reason: string;
+  } | null>(null);
 
   const handleAdjustCredits = async (userId: string) => {
     if (!adjustingCredits || adjustingCredits.userId !== userId) {
@@ -43,7 +48,7 @@ export function UsersTab({ users, loading, search, onSearchChange, onUserUpdated
       setAdjustingCredits(null);
       onUserUpdated();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to adjust credits");
+      toast.error(err instanceof Error ? err.message : "Failed to adjust credits");
     } finally {
       setProcessing(null);
     }
@@ -85,10 +90,14 @@ export function UsersTab({ users, loading, search, onSearchChange, onUserUpdated
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
                     <h3 className="font-display text-2xl uppercase">@{userProfile.username}</h3>
-                    <span className="text-xs font-bold px-2 py-1 bg-accent-yellow rounded">{userProfile.email}</span>
+                    <span className="text-xs font-bold px-2 py-1 bg-accent-yellow rounded">
+                      {userProfile.email}
+                    </span>
                   </div>
                   <p className="text-xs text-ink/60 font-mono">ID: {userProfile.id.slice(0, 8)}</p>
-                  <p className="text-xs text-ink/60 mt-1">Member since: {new Date(userProfile.created_at).toLocaleDateString()}</p>
+                  <p className="text-xs text-ink/60 mt-1">
+                    Member since: {new Date(userProfile.created_at).toLocaleDateString()}
+                  </p>
                 </div>
               </div>
 
@@ -96,7 +105,9 @@ export function UsersTab({ users, loading, search, onSearchChange, onUserUpdated
                 <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
                   <div>
                     <span className="font-bold">Balance</span>
-                    <div className="text-magenta">✦{parseFloat(userProfile.balance.toString()).toFixed(2)}</div>
+                    <div className="text-magenta">
+                      ✦{parseFloat(userProfile.balance.toString()).toFixed(2)}
+                    </div>
                   </div>
                   <div>
                     <span className="font-bold">Listings</span>
@@ -108,7 +119,9 @@ export function UsersTab({ users, loading, search, onSearchChange, onUserUpdated
                   </div>
                   <div>
                     <span className="font-bold">Rating</span>
-                    <div className="text-magenta">{parseFloat(userProfile.average_rating.toString()).toFixed(1)}★</div>
+                    <div className="text-magenta">
+                      {parseFloat(userProfile.average_rating.toString()).toFixed(1)}★
+                    </div>
                   </div>
                   <div>
                     <span className="font-bold">Status</span>
