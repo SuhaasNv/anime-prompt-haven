@@ -24,7 +24,12 @@
       "Bash(git stash *)",
       "Bash(ls bun.lock)",
       "Bash(git check-ignore *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(docker exec *)",
+      "Bash(git commit -m 'fix: correct saved_prompts index to use listing_id instead of prompt_id *)",
+      "Bash(git push *)",
+      "Bash(curl -s http://localhost:5173)"
     ]
   }
 }

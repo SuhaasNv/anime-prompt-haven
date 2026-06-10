@@ -1,6 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
+import { z } from "zod";
 import { getDb } from "../db.server";
 import { getSessionUser } from "../auth.server";
+import { logAdminAction } from "./audit.functions";
 
 interface DashboardMetrics {
   revenue: {
@@ -167,3 +169,219 @@ export const getAuditLogs = createServerFn({ method: "GET" }).handler(async () =
 
   return result.rows;
 });
+
+// Reports Management
+export interface ReportWithListing {
+  id: string;
+  listing_id: string;
+  listing_title: string;
+  listing_status: string;
+  reporter_email: string;
+  reason: string;
+  note: string | null;
+  created_at: string;
+  report_count: number;
+}
+
+export const getReports = createServerFn({ method: "GET" }).handler(async () => {
+  const user = await getSessionUser();
+  if (!user?.is_admin) {
+    throw new Error("Unauthorized");
+  }
+
+  const db = getDb();
+  await logAdminAction(db, user.id, "list_reports");
+
+  const result = await db.query<ReportWithListing>(
+    `SELECT
+      r.id,
+      r.listing_id,
+      pl.title as listing_title,
+      pl.status as listing_status,
+      u.email as reporter_email,
+      r.reason,
+      r.note,
+      r.created_at,
+      (SELECT COUNT(*) FROM reports WHERE listing_id = r.listing_id)::integer as report_count
+    FROM reports r
+    JOIN prompt_listings pl ON pl.id = r.listing_id
+    JOIN users u ON u.id = r.reporter_id
+    ORDER BY report_count DESC, r.created_at DESC`
+  );
+
+  return result.rows;
+});
+
+// Listings Management
+export interface ListingWithStats {
+  id: string;
+  title: string;
+  user_id: string;
+  username: string;
+  status: string;
+  price: number;
+  view_count: number;
+  purchase_count: number;
+  report_count: number;
+  created_at: string;
+}
+
+export const searchListings = createServerFn({ method: "POST" })
+  .inputValidator(z.object({
+    search: z.string().optional().default(""),
+    status: z.enum(["all", "published", "flagged", "removed", "draft"]).optional().default("all"),
+  }))
+  .handler(async ({ data }) => {
+    const user = await getSessionUser();
+    if (!user?.is_admin) {
+      throw new Error("Unauthorized");
+    }
+
+    const db = getDb();
+
+    let query = `
+      SELECT
+        pl.id,
+        pl.title,
+        pl.user_id,
+        u.username,
+        pl.status,
+        pl.price,
+        pl.view_count,
+        pl.purchase_count,
+        (SELECT COUNT(*) FROM reports WHERE listing_id = pl.id)::integer as report_count,
+        pl.created_at
+      FROM prompt_listings pl
+      JOIN users u ON u.id = pl.user_id
+      WHERE 1=1
+    `;
+
+    const params: unknown[] = [];
+
+    if (data.search) {
+      params.push(`%${data.search}%`);
+      query += ` AND (pl.title ILIKE $${params.length} OR u.username ILIKE $${params.length} OR u.email ILIKE $${params.length})`;
+    }
+
+    if (data.status !== "all") {
+      params.push(data.status);
+      query += ` AND pl.status = $${params.length}`;
+    }
+
+    query += ` ORDER BY pl.created_at DESC LIMIT 50`;
+
+    const result = await db.query<ListingWithStats>(query, params);
+    return result.rows;
+  });
+
+export const updateListingStatus = createServerFn({ method: "POST" })
+  .inputValidator(z.object({
+    listingId: z.string().uuid(),
+    status: z.enum(["published", "flagged", "removed"]),
+  }))
+  .handler(async ({ data }) => {
+    const user = await getSessionUser();
+    if (!user?.is_admin) {
+      throw new Error("Unauthorized");
+    }
+
+    const db = getDb();
+    await db.query(
+      "UPDATE prompt_listings SET status = $1 WHERE id = $2",
+      [data.status, data.listingId]
+    );
+
+    await logAdminAction(db, user.id, "moderate_listing", data.listingId, `Status changed to ${data.status}`);
+  });
+
+// User Management
+export interface UserProfile {
+  id: string;
+  email: string;
+  username: string;
+  balance: number;
+  listing_count: number;
+  purchase_count: number;
+  average_rating: number;
+  created_at: string;
+}
+
+export const searchUsers = createServerFn({ method: "POST" })
+  .inputValidator(z.object({
+    search: z.string().optional().default(""),
+  }))
+  .handler(async ({ data }) => {
+    const user = await getSessionUser();
+    if (!user?.is_admin) {
+      throw new Error("Unauthorized");
+    }
+
+    const db = getDb();
+
+    let query = `
+      SELECT
+        u.id,
+        u.email,
+        u.username,
+        COALESCE(uc.balance, 0)::numeric as balance,
+        (SELECT COUNT(*) FROM prompt_listings WHERE user_id = u.id)::integer as listing_count,
+        (SELECT COUNT(*) FROM purchases WHERE buyer_id = u.id)::integer as purchase_count,
+        COALESCE(AVG(r.rating), 0)::numeric as average_rating,
+        u.created_at
+      FROM users u
+      LEFT JOIN user_credits uc ON uc.user_id = u.id
+      LEFT JOIN reviews r ON r.user_id = u.id
+      WHERE 1=1
+    `;
+
+    const params: unknown[] = [];
+
+    if (data.search) {
+      params.push(`%${data.search}%`);
+      query += ` AND (u.email ILIKE $${params.length} OR u.username ILIKE $${params.length})`;
+    }
+
+    query += ` GROUP BY u.id, u.email, u.username, uc.balance, u.created_at
+               ORDER BY u.created_at DESC LIMIT 50`;
+
+    const result = await db.query<UserProfile>(query, params);
+    return result.rows;
+  });
+
+export const adjustUserCredits = createServerFn({ method: "POST" })
+  .inputValidator(z.object({
+    userId: z.string().uuid(),
+    amount: z.number(),
+    reason: z.string().min(1).max(300),
+  }))
+  .handler(async ({ data }) => {
+    const user = await getSessionUser();
+    if (!user?.is_admin) {
+      throw new Error("Unauthorized");
+    }
+
+    const db = getDb();
+
+    // Initialize user_credits if needed
+    await db.query(
+      `INSERT INTO user_credits (user_id, balance) VALUES ($1, $2)
+       ON CONFLICT (user_id) DO NOTHING`,
+      [data.userId, 0]
+    );
+
+    // Update balance
+    await db.query(
+      `UPDATE user_credits SET balance = balance + $1, updated_at = now() WHERE user_id = $2`,
+      [data.amount, data.userId]
+    );
+
+    // Log transaction
+    await db.query(
+      `INSERT INTO credit_transactions (user_id, amount, type, note)
+       VALUES ($1, $2, 'bonus', $3)`,
+      [data.userId, data.amount, data.reason]
+    );
+
+    // Log admin action
+    await logAdminAction(db, user.id, "credits_adjusted", data.userId, `${data.amount > 0 ? '+' : ''}${data.amount} credits: ${data.reason}`);
+  });

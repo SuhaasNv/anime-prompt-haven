@@ -5,7 +5,16 @@ import { Navbar } from "@/components/Navbar";
 import { CURRENT_USER_QUERY_KEY, getCurrentUser } from "@/lib/api/auth.functions";
 import { listReports, moderateListing } from "@/lib/api/reports.functions";
 import { listAllTransactions } from "@/lib/api/credits.functions";
-import { getDashboardMetrics, getAuditLogs } from "@/lib/api/admin.functions";
+import {
+  getDashboardMetrics,
+  getAuditLogs,
+  getReports,
+  searchListings,
+  searchUsers,
+} from "@/lib/api/admin.functions";
+import { ReportsTab } from "@/components/admin/ReportsTab";
+import { ListingsTab } from "@/components/admin/ListingsTab";
+import { UsersTab } from "@/components/admin/UsersTab";
 
 interface FlaggedListing {
   id: string;
@@ -46,7 +55,7 @@ export const Route = createFileRoute("/admin")({
   component: AdminDashboard,
 });
 
-type AdminTab = "dashboard" | "queue" | "audit" | "credits";
+type AdminTab = "dashboard" | "reports" | "listings" | "users" | "queue" | "audit" | "credits";
 
 const TYPE_LABELS: Record<string, string> = {
   bonus: "Bonus",
@@ -69,6 +78,17 @@ function AdminDashboard() {
   const [loadingMetrics, setLoadingMetrics] = useState(false);
   const [auditLogs, setAuditLogs] = useState<Awaited<ReturnType<typeof getAuditLogs>> | null>(null);
   const [loadingAudit, setLoadingAudit] = useState(false);
+  const [reports, setReports] = useState<Awaited<ReturnType<typeof getReports>> | null>(null);
+  const [loadingReports, setLoadingReports] = useState(false);
+  const [reportRefresh, setReportRefresh] = useState(0);
+  const [listingsData, setListingsData] = useState<Awaited<ReturnType<typeof searchListings>> | null>(null);
+  const [loadingListings, setLoadingListings] = useState(false);
+  const [listingsSearch, setListingsSearch] = useState("");
+  const [listingsStatus, setListingsStatus] = useState("all");
+  const [usersData, setUsersData] = useState<Awaited<ReturnType<typeof searchUsers>> | null>(null);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [usersSearch, setUsersSearch] = useState("");
+  const [usersRefresh, setUsersRefresh] = useState(0);
 
   useEffect(() => {
     if (activeTab === "dashboard" && !metrics) {
@@ -89,6 +109,33 @@ function AdminDashboard() {
     setLoadingCredits(true);
     listAllTransactions().then(setCreditData).finally(() => setLoadingCredits(false));
   }, [activeTab, creditData]);
+
+  useEffect(() => {
+    if (activeTab === "reports") {
+      setLoadingReports(true);
+      getReports().then(setReports).finally(() => setLoadingReports(false));
+    }
+  }, [activeTab, reportRefresh]);
+
+  useEffect(() => {
+    if (activeTab === "listings") {
+      setLoadingListings(true);
+      searchListings({
+        data: { search: listingsSearch, status: listingsStatus as any },
+      })
+        .then(setListingsData)
+        .finally(() => setLoadingListings(false));
+    }
+  }, [activeTab, listingsSearch, listingsStatus]);
+
+  useEffect(() => {
+    if (activeTab === "users") {
+      setLoadingUsers(true);
+      searchUsers({ data: { search: usersSearch } })
+        .then(setUsersData)
+        .finally(() => setLoadingUsers(false));
+    }
+  }, [activeTab, usersSearch, usersRefresh]);
 
   const handleRestore = async (id: string) => {
     setProcessing(id);
@@ -131,7 +178,7 @@ function AdminDashboard() {
 
         {/* Tabs */}
         <div className="flex gap-2 mb-8 border-b-4 border-ink flex-wrap">
-          {(["dashboard", "queue", "audit", "credits"] as AdminTab[]).map((tab) => (
+          {(["dashboard", "reports", "listings", "users", "queue", "audit", "credits"] as AdminTab[]).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -142,6 +189,9 @@ function AdminDashboard() {
               }`}
             >
               {tab === "dashboard" && "📊 Analytics"}
+              {tab === "reports" && `⚡ Reports ${reports?.length || 0 ? `(${reports.length})` : ""}`}
+              {tab === "listings" && "📝 Listings"}
+              {tab === "users" && "👥 Users"}
               {tab === "queue" && `⚠️ Queue (${listings.length})`}
               {tab === "audit" && "🔍 Audit Log"}
               {tab === "credits" && "✦ Transactions"}
@@ -260,6 +310,35 @@ function AdminDashboard() {
               </div>
             ) : null}
           </div>
+        )}
+
+        {activeTab === "reports" && (
+          <ReportsTab
+            reports={reports || []}
+            loading={loadingReports}
+            onRefresh={() => setReportRefresh((prev) => prev + 1)}
+          />
+        )}
+
+        {activeTab === "listings" && (
+          <ListingsTab
+            listings={listingsData || []}
+            loading={loadingListings}
+            search={listingsSearch}
+            onSearchChange={setListingsSearch}
+            onStatusChange={setListingsStatus}
+            statusFilter={listingsStatus}
+          />
+        )}
+
+        {activeTab === "users" && (
+          <UsersTab
+            users={usersData || []}
+            loading={loadingUsers}
+            search={usersSearch}
+            onSearchChange={setUsersSearch}
+            onUserUpdated={() => setUsersRefresh((prev) => prev + 1)}
+          />
         )}
 
         {activeTab === "credits" && (
