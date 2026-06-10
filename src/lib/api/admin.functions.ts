@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { createHash } from "node:crypto";
 import { getDb } from "../db.server";
 import { getSessionUser } from "../auth.server";
 import { logAdminAction } from "./audit.functions";
@@ -384,4 +385,293 @@ export const adjustUserCredits = createServerFn({ method: "POST" })
 
     // Log admin action
     await logAdminAction(db, user.id, "credits_adjusted", data.userId, `${data.amount > 0 ? '+' : ''}${data.amount} credits: ${data.reason}`);
+  });
+
+// Financial Controls - Phase 3
+
+export interface CreatorPayout {
+  id: string;
+  creator_id: string;
+  creator_email: string;
+  creator_username: string;
+  amount: number;
+  status: string;
+  bank_account: string | null;
+  created_at: string;
+  approved_at: string | null;
+}
+
+export const getPendingPayouts = createServerFn({ method: "GET" }).handler(async () => {
+  const user = await getSessionUser();
+  if (!user?.is_admin) {
+    throw new Error("Unauthorized");
+  }
+
+  const db = getDb();
+  await logAdminAction(db, user.id, "list_payouts");
+
+  const result = await db.query<CreatorPayout>(
+    `SELECT
+      cp.id,
+      cp.creator_id,
+      u.email as creator_email,
+      u.username as creator_username,
+      cp.amount,
+      cp.status,
+      cp.bank_account,
+      cp.created_at,
+      cp.approved_at
+    FROM creator_payouts cp
+    JOIN users u ON u.id = cp.creator_id
+    WHERE cp.status IN ('pending', 'approved')
+    ORDER BY cp.status ASC, cp.created_at DESC`
+  );
+
+  return result.rows;
+});
+
+export const updatePayoutStatus = createServerFn({ method: "POST" })
+  .inputValidator(
+    z.object({
+      payoutId: z.string().uuid(),
+      status: z.enum(["approved", "rejected", "paid"]),
+      reason: z.string().optional(),
+    })
+  )
+  .handler(async ({ data }) => {
+    const user = await getSessionUser();
+    if (!user?.is_admin) {
+      throw new Error("Unauthorized");
+    }
+
+    const db = getDb();
+
+    await db.query(
+      `UPDATE creator_payouts
+       SET status = $1, approved_at = now(), approved_by = $2
+       WHERE id = $3`,
+      [data.status, user.id, data.payoutId]
+    );
+
+    await logAdminAction(db, user.id, "payout_updated", data.payoutId, `Status: ${data.status}${data.reason ? ` - ${data.reason}` : ""}`);
+  });
+
+// Disputes
+
+export interface DisputeInfo {
+  id: string;
+  purchase_id: string;
+  buyer_email: string;
+  seller_email: string;
+  listing_title: string;
+  amount_paid: number;
+  reason: string;
+  status: string;
+  winner: string | null;
+  created_at: string;
+}
+
+export const getDisputes = createServerFn({ method: "GET" }).handler(async () => {
+  const user = await getSessionUser();
+  if (!user?.is_admin) {
+    throw new Error("Unauthorized");
+  }
+
+  const db = getDb();
+  await logAdminAction(db, user.id, "list_disputes");
+
+  const result = await db.query<DisputeInfo>(
+    `SELECT
+      d.id,
+      d.purchase_id,
+      ub.email as buyer_email,
+      us.email as seller_email,
+      pl.title as listing_title,
+      p.price_paid as amount_paid,
+      d.reason,
+      d.status,
+      d.winner,
+      d.created_at
+    FROM disputes d
+    JOIN purchases p ON p.id = d.purchase_id
+    JOIN prompt_listings pl ON pl.id = p.listing_id
+    JOIN users ub ON ub.id = d.buyer_id
+    JOIN users us ON us.id = d.seller_id
+    WHERE d.status IN ('open', 'under_review')
+    ORDER BY d.created_at DESC`
+  );
+
+  return result.rows;
+});
+
+export const resolveDispute = createServerFn({ method: "POST" })
+  .inputValidator(
+    z.object({
+      disputeId: z.string().uuid(),
+      winner: z.enum(["buyer", "seller", "settlement"]),
+      resolution: z.string().min(10).max(500),
+    })
+  )
+  .handler(async ({ data }) => {
+    const user = await getSessionUser();
+    if (!user?.is_admin) {
+      throw new Error("Unauthorized");
+    }
+
+    const db = getDb();
+
+    // Get dispute info to process refund if buyer wins
+    const disputeResult = await db.query<{ purchase_id: string; buyer_id: string; seller_id: string; amount_paid: string }>(
+      `SELECT purchase_id, buyer_id, seller_id, p.price_paid as amount_paid
+       FROM disputes d
+       JOIN purchases p ON p.id = d.purchase_id
+       WHERE d.id = $1`,
+      [data.disputeId]
+    );
+
+    if (disputeResult.rows.length === 0) {
+      throw new Error("Dispute not found");
+    }
+
+    const dispute = disputeResult.rows[0];
+    const refundAmount = parseFloat(dispute.amount_paid);
+
+    // Update dispute status
+    await db.query(
+      `UPDATE disputes
+       SET status = 'resolved', winner = $1, resolution = $2, resolved_by = $3, resolved_at = now()
+       WHERE id = $4`,
+      [data.winner, data.resolution, user.id, data.disputeId]
+    );
+
+    // Process refund if buyer wins
+    if (data.winner === "buyer") {
+      // Initialize buyer credits if needed
+      await db.query(
+        `INSERT INTO user_credits (user_id, balance) VALUES ($1, $2)
+         ON CONFLICT (user_id) DO NOTHING`,
+        [dispute.buyer_id, 0]
+      );
+
+      // Refund buyer
+      await db.query(
+        `UPDATE user_credits SET balance = balance + $1, updated_at = now() WHERE user_id = $2`,
+        [refundAmount, dispute.buyer_id]
+      );
+
+      await db.query(
+        `INSERT INTO credit_transactions (user_id, amount, type, note)
+         VALUES ($1, $2, 'refund', 'Dispute resolution - buyer won')`,
+        [dispute.buyer_id, refundAmount]
+      );
+
+      // Deduct from seller's earnings
+      await db.query(
+        `INSERT INTO credit_transactions (user_id, amount, type, note)
+         VALUES ($1, $2, 'refund', 'Dispute resolution - buyer refunded')`,
+        [dispute.seller_id, -refundAmount]
+      );
+    }
+
+    await logAdminAction(db, user.id, "dispute_resolved", data.disputeId, `Winner: ${data.winner} - ${data.resolution}`);
+  });
+
+// GDPR & Data Retention
+
+export const exportUserDataGDPR = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ userId: z.string().uuid() }))
+  .handler(async ({ data }) => {
+    const user = await getSessionUser();
+    if (!user?.is_admin) {
+      throw new Error("Unauthorized");
+    }
+
+    const db = getDb();
+
+    // Fetch all user data
+    const userResult = await db.query<any>(
+      `SELECT id, email, username, mascot, is_admin, created_at FROM users WHERE id = $1`,
+      [data.userId]
+    );
+
+    const purchasesResult = await db.query<any>(
+      `SELECT id, listing_id, price_paid, created_at FROM purchases WHERE buyer_id = $1`,
+      [data.userId]
+    );
+
+    const listingsResult = await db.query<any>(
+      `SELECT id, title, description, price, status, created_at FROM prompt_listings WHERE user_id = $1`,
+      [data.userId]
+    );
+
+    const reviewsResult = await db.query<any>(
+      `SELECT id, listing_id, rating, body, created_at FROM reviews WHERE user_id = $1`,
+      [data.userId]
+    );
+
+    const creditsResult = await db.query<any>(
+      `SELECT id, amount, type, note, created_at FROM credit_transactions WHERE user_id = $1 ORDER BY created_at DESC`,
+      [data.userId]
+    );
+
+    const exportData = {
+      user: userResult.rows[0],
+      purchases: purchasesResult.rows,
+      listings: listingsResult.rows,
+      reviews: reviewsResult.rows,
+      credits: creditsResult.rows,
+      exported_at: new Date().toISOString(),
+    };
+
+    await logAdminAction(db, user.id, "gdpr_export", data.userId, "User data exported");
+
+    return exportData;
+  });
+
+export const deleteUserAccount = createServerFn({ method: "POST" })
+  .inputValidator(
+    z.object({
+      userId: z.string().uuid(),
+      reason: z.string().min(1).max(300),
+    })
+  )
+  .handler(async ({ data }) => {
+    const user = await getSessionUser();
+    if (!user?.is_admin) {
+      throw new Error("Unauthorized");
+    }
+
+    const db = getDb();
+
+    // Archive user data
+    const userResult = await db.query<any>(
+      `SELECT * FROM users WHERE id = $1`,
+      [data.userId]
+    );
+
+    if (userResult.rows.length === 0) {
+      throw new Error("User not found");
+    }
+
+    const userData = userResult.rows[0];
+    const emailHash = createHash("sha256").update(userData.email).digest("hex");
+
+    // Create archive record
+    await db.query(
+      `INSERT INTO deleted_users_archive (user_id, email_hash, data_json, retention_until)
+       VALUES ($1, $2, $3, now() + interval '2 years')`,
+      [data.userId, emailHash, JSON.stringify(userData)]
+    );
+
+    // Anonymize user data
+    await db.query(
+      `UPDATE users
+       SET email = 'deleted-' || id::text || '@deleted.local',
+           username = 'deleted_' || substring(id::text, 1, 8),
+           is_admin = false
+       WHERE id = $1`,
+      [data.userId]
+    );
+
+    await logAdminAction(db, user.id, "user_deleted", data.userId, `Reason: ${data.reason}`);
   });

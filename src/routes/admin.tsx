@@ -11,10 +11,13 @@ import {
   getReports,
   searchListings,
   searchUsers,
+  getPendingPayouts,
+  getDisputes,
 } from "@/lib/api/admin.functions";
 import { ReportsTab } from "@/components/admin/ReportsTab";
 import { ListingsTab } from "@/components/admin/ListingsTab";
 import { UsersTab } from "@/components/admin/UsersTab";
+import { FinancialTab } from "@/components/admin/FinancialTab";
 
 interface FlaggedListing {
   id: string;
@@ -55,7 +58,7 @@ export const Route = createFileRoute("/admin")({
   component: AdminDashboard,
 });
 
-type AdminTab = "dashboard" | "reports" | "listings" | "users" | "queue" | "audit" | "credits";
+type AdminTab = "dashboard" | "reports" | "listings" | "users" | "financial" | "queue" | "audit" | "credits";
 
 const TYPE_LABELS: Record<string, string> = {
   bonus: "Bonus",
@@ -89,6 +92,12 @@ function AdminDashboard() {
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [usersSearch, setUsersSearch] = useState("");
   const [usersRefresh, setUsersRefresh] = useState(0);
+  const [payouts, setPayouts] = useState<Awaited<ReturnType<typeof getPendingPayouts>> | null>(null);
+  const [loadingPayouts, setLoadingPayouts] = useState(false);
+  const [payoutsRefresh, setPayoutsRefresh] = useState(0);
+  const [disputesData, setDisputesData] = useState<Awaited<ReturnType<typeof getDisputes>> | null>(null);
+  const [loadingDisputes, setLoadingDisputes] = useState(false);
+  const [disputesRefresh, setDisputesRefresh] = useState(0);
 
   useEffect(() => {
     if (activeTab === "dashboard" && !metrics) {
@@ -137,6 +146,15 @@ function AdminDashboard() {
     }
   }, [activeTab, usersSearch, usersRefresh]);
 
+  useEffect(() => {
+    if (activeTab === "financial") {
+      setLoadingPayouts(true);
+      getPendingPayouts().then(setPayouts).finally(() => setLoadingPayouts(false));
+      setLoadingDisputes(true);
+      getDisputes().then(setDisputesData).finally(() => setLoadingDisputes(false));
+    }
+  }, [activeTab, payoutsRefresh, disputesRefresh]);
+
   const handleRestore = async (id: string) => {
     setProcessing(id);
     try {
@@ -178,7 +196,7 @@ function AdminDashboard() {
 
         {/* Tabs */}
         <div className="flex gap-2 mb-8 border-b-4 border-ink flex-wrap">
-          {(["dashboard", "reports", "listings", "users", "queue", "audit", "credits"] as AdminTab[]).map((tab) => (
+          {(["dashboard", "reports", "listings", "users", "financial", "queue", "audit", "credits"] as AdminTab[]).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -192,6 +210,7 @@ function AdminDashboard() {
               {tab === "reports" && `⚡ Reports ${reports?.length || 0 ? `(${reports.length})` : ""}`}
               {tab === "listings" && "📝 Listings"}
               {tab === "users" && "👥 Users"}
+              {tab === "financial" && "💰 Financial"}
               {tab === "queue" && `⚠️ Queue (${listings.length})`}
               {tab === "audit" && "🔍 Audit Log"}
               {tab === "credits" && "✦ Transactions"}
@@ -338,6 +357,17 @@ function AdminDashboard() {
             search={usersSearch}
             onSearchChange={setUsersSearch}
             onUserUpdated={() => setUsersRefresh((prev) => prev + 1)}
+          />
+        )}
+
+        {activeTab === "financial" && (
+          <FinancialTab
+            payouts={payouts || []}
+            disputes={disputesData || []}
+            payoutsLoading={loadingPayouts}
+            disputesLoading={loadingDisputes}
+            onPayoutUpdated={() => setPayoutsRefresh((prev) => prev + 1)}
+            onDisputeResolved={() => setDisputesRefresh((prev) => prev + 1)}
           />
         )}
 
