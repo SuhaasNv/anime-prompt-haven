@@ -16,7 +16,7 @@ CREATE INDEX IF NOT EXISTS collection_prompts_collection_id_idx ON collection_pr
 CREATE INDEX IF NOT EXISTS collection_prompts_prompt_id_idx ON collection_prompts(prompt_id);
 
 -- Saved prompts indexes
-CREATE INDEX IF NOT EXISTS saved_prompts_prompt_id_idx ON saved_prompts(prompt_id);
+CREATE INDEX IF NOT EXISTS saved_prompts_listing_id_idx ON saved_prompts(listing_id);
 
 -- Reports indexes
 CREATE INDEX IF NOT EXISTS reports_listing_id_idx ON reports(listing_id);
