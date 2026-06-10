@@ -14,7 +14,11 @@
       "Bash(pkill -f \"node.*vite\\\\|npm.*dev\")",
       "Bash(echo \"Dev server starting, PID: $!\")",
       "Bash(xargs kill -9)",
-      "Bash(echo \"PID: $!\")"
+      "Bash(echo \"PID: $!\")",
+      "Bash(claude *)",
+      "Bash(docker compose *)",
+      "Bash(lsof -i :3000 -sTCP:LISTEN -P)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3000)"
     ]
   }
 }

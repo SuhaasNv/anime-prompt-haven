@@ -2,13 +2,16 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useRouter, useRouterState } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CURRENT_USER_QUERY_KEY, getCurrentUser, signOut } from "@/lib/api/auth.functions";
-import { getMyCredits } from "@/lib/api/credits.functions";
+import { CREDITS_QUERY_KEY, getMyCredits } from "@/lib/api/credits.functions";
+import { getUnreadCount } from "@/lib/api/notifications.functions";
 import { MASCOTS } from "@/lib/mascots";
 import { CreditBalanceWidget } from "./CreditBalanceWidget";
 import { CreditsModal } from "./CreditsModal";
+import { NotificationBell } from "./NotificationBell";
 
 const links = [
   { to: "/", label: "Market" },
+  { to: "/explore", label: "Explore" },
   { to: "/dashboard", label: "Binder" },
 ] as const;
 
@@ -20,7 +23,7 @@ export function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [creditsOpen, setCreditsOpen] = useState(false);
-  const [creditBalance, setCreditBalance] = useState<number | null>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
   const menuRef = useRef<HTMLDivElement>(null);
 
   // Cached under a stable key in the app-wide QueryClient (which outlives any
@@ -35,9 +38,20 @@ export function Navbar() {
     staleTime: 60_000,
   });
 
+  // Shared across routes via the QueryClient so actions on other pages
+  // (e.g. purchasing a prompt) can update this balance instantly via
+  // queryClient.setQueryData(CREDITS_QUERY_KEY, ...) without a refetch.
+  const { data: creditsData } = useQuery({
+    queryKey: CREDITS_QUERY_KEY,
+    queryFn: getMyCredits,
+    enabled: !!user,
+    staleTime: 30_000,
+  });
+  const creditBalance = creditsData?.balance ?? null;
+
   useEffect(() => {
     if (!user) return;
-    getMyCredits().then((c) => setCreditBalance(c.balance)).catch(() => {});
+    getUnreadCount().then((c) => setUnreadCount(c.count)).catch(() => {});
   }, [user]);
 
   useEffect(() => {
@@ -102,6 +116,7 @@ export function Navbar() {
 
         {user ? (
           <div className="hidden md:flex items-center gap-4">
+            <NotificationBell unreadCount={unreadCount} onOpened={() => setUnreadCount(0)} />
             <CreditBalanceWidget balance={creditBalance} onOpen={() => setCreditsOpen(true)} />
             <div ref={menuRef} className="relative">
               <button
@@ -179,6 +194,10 @@ export function Navbar() {
           })}
           {user ? (
             <>
+              <div className="flex items-center justify-between px-6 py-4 border-b-2 border-ink/10">
+                <span className="font-bold uppercase text-sm">Notifications</span>
+                <NotificationBell unreadCount={unreadCount} onOpened={() => setUnreadCount(0)} />
+              </div>
               <Link to="/profile" onClick={() => setMobileOpen(false)} className="block px-6 py-4 font-bold uppercase text-sm border-b-2 border-ink/10 hover:bg-accent-yellow transition-colors">Studio</Link>
               <button onClick={() => { handleSignOut(); setMobileOpen(false); }} className="w-full text-left px-6 py-4 font-bold uppercase text-sm text-magenta hover:bg-ink hover:text-white transition-colors">Sign Out</button>
             </>
@@ -191,7 +210,11 @@ export function Navbar() {
         </div>
       )}
     </nav>
-    <CreditsModal open={creditsOpen} onClose={() => setCreditsOpen(false)} onBalanceChange={setCreditBalance} />
+    <CreditsModal
+      open={creditsOpen}
+      onClose={() => setCreditsOpen(false)}
+      onBalanceChange={(balance) => queryClient.setQueryData(CREDITS_QUERY_KEY, { balance })}
+    />
     </>
   );
 }

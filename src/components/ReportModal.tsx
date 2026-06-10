@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { reportListing } from "@/lib/api/reports.functions";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface ReportModalProps {
   open: boolean;
@@ -111,17 +112,18 @@ export function ReportModal({ open, onClose, listingId, listingTitle }: ReportMo
                     <label className="text-xs font-bold uppercase tracking-widest block mb-2">
                       What's wrong?
                     </label>
-                    <select
-                      value={reason}
-                      onChange={(e) => setReason(e.target.value as typeof reason)}
-                      className="w-full bg-white border-2 border-ink p-2 font-bold text-sm focus:outline-none focus:ring-4 focus:ring-magenta/30"
-                    >
-                      {REPORT_REASONS.map((r) => (
-                        <option key={r.value} value={r.value}>
-                          {r.label}
-                        </option>
-                      ))}
-                    </select>
+                    <Select value={reason} onValueChange={(v) => setReason(v as typeof reason)}>
+                      <SelectTrigger className="w-full h-auto bg-white border-2 border-ink rounded-none p-2 font-bold text-sm focus:outline-none focus:ring-4 focus:ring-magenta/30 focus:ring-offset-0">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="z-[210] border-2 border-ink rounded-none">
+                        {REPORT_REASONS.map((r) => (
+                          <SelectItem key={r.value} value={r.value} className="font-bold text-sm rounded-none cursor-pointer">
+                            {r.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   <div>

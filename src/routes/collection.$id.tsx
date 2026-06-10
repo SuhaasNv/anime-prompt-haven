@@ -1,8 +1,16 @@
 import { createFileRoute, Link, notFound, redirect, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 import { Navbar } from "@/components/Navbar";
+import { Switch } from "@/components/ui/switch";
 import { CURRENT_USER_QUERY_KEY, getCurrentUser } from "@/lib/api/auth.functions";
-import { addPromptToCollection, removePromptFromCollection, deleteCollection, listCollections } from "@/lib/api/collections.functions";
+import {
+  addPromptToCollection,
+  removePromptFromCollection,
+  deleteCollection,
+  listCollections,
+  getPublicCollection,
+  toggleCollectionVisibility,
+} from "@/lib/api/collections.functions";
 import { getListing } from "@/lib/api/listings.functions";
 import { getPrompt, PROMPTS, type Prompt } from "@/lib/mock-data";
 
@@ -32,13 +40,29 @@ export const Route = createFileRoute("/collection/$id")({
       queryFn: getCurrentUser,
       staleTime: 60_000,
     });
-    if (!user) {
-      throw redirect({ to: "/auth" });
-    }
     return { user };
   },
-  loader: async ({ params }) => {
+  loader: async ({ params, context }) => {
     try {
+      // Public collections are viewable by anyone, including the owner.
+      const publicCollection = await getPublicCollection({ data: { id: params.id } });
+      if (publicCollection) {
+        const resolvedPrompts = await Promise.all(
+          publicCollection.promptIds.map((id) => resolvePrompt(id))
+        );
+        const prompts = resolvedPrompts.filter((p): p is Prompt => p !== null);
+        return {
+          collection: publicCollection,
+          prompts,
+          isOwner: context.user?.id === publicCollection.userId,
+        };
+      }
+
+      // Not public (or doesn't exist) — fall back to the owner-only path.
+      if (!context.user) {
+        throw redirect({ to: "/auth" });
+      }
+
       const collections = await listCollections();
       const collection = collections.find((c) => c.id === params.id);
       if (!collection) {
@@ -53,7 +77,11 @@ export const Route = createFileRoute("/collection/$id")({
       // Filter out null values (deleted prompts)
       const prompts = resolvedPrompts.filter((p): p is Prompt => p !== null);
 
-      return { collection, prompts };
+      return {
+        collection: { ...collection, userId: context.user.id, username: context.user.username },
+        prompts,
+        isOwner: true,
+      };
     } catch (error) {
       console.error("Error loading collection:", error);
       throw error;
@@ -161,10 +189,13 @@ function AddPromptPicker({ collectionId, savedIds, onClose }: { collectionId: st
 
 function CollectionDetail() {
   const router = useRouter();
-  const { collection, prompts } = Route.useLoaderData();
+  const { collection, prompts, isOwner } = Route.useLoaderData();
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
   const [deletingCol, setDeletingCol] = useState(false);
+  const [isPublic, setIsPublic] = useState(collection.isPublic);
+  const [togglingVisibility, setTogglingVisibility] = useState(false);
+  const [copied, setCopied] = useState(false);
   const colors = colorMap[collection.color];
 
   const handleRemovePrompt = async (promptId: string) => {
@@ -191,6 +222,24 @@ function CollectionDetail() {
     }
   };
 
+  const handleToggleVisibility = async () => {
+    setTogglingVisibility(true);
+    try {
+      const result = await toggleCollectionVisibility({ data: { id: collection.id } });
+      setIsPublic(result.isPublic);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to update visibility");
+    } finally {
+      setTogglingVisibility(false);
+    }
+  };
+
+  const handleCopyLink = async () => {
+    await navigator.clipboard.writeText(window.location.href);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
     <div className="min-h-screen">
       <Navbar />
@@ -207,26 +256,52 @@ function CollectionDetail() {
                 {collection.name}
               </h1>
               <p className="mt-3 font-mono text-sm">{prompts.length} prompts saved</p>
+              {!isOwner && (
+                <p className="mt-1 text-xs font-bold uppercase tracking-wider text-ink/60">
+                  by{" "}
+                  <Link to="/u/$username" params={{ username: collection.username }} className="text-magenta hover:underline">
+                    @{collection.username}
+                  </Link>
+                </p>
+              )}
             </div>
-            <div className="flex gap-3">
-              <button
-                onClick={handleDeleteCollection}
-                disabled={deletingCol}
-                className="bg-magenta text-white px-4 py-2 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all text-sm disabled:opacity-50"
-              >
-                {deletingCol ? "Deleting…" : "Delete"}
-              </button>
-              <button
-                onClick={() => setAdding((v) => !v)}
-                className={`${colors.bg} text-ink px-4 py-2 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all text-sm`}
-              >
-                {adding ? "Hide picker" : "+ Add prompts"}
-              </button>
+            <div className="flex flex-col items-end gap-3">
+              {isOwner && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold uppercase tracking-wider">{isPublic ? "🌐 Public" : "🔒 Private"}</span>
+                  <Switch checked={isPublic} disabled={togglingVisibility} onCheckedChange={handleToggleVisibility} />
+                </div>
+              )}
+              {isPublic && (
+                <button
+                  onClick={handleCopyLink}
+                  className="bg-white text-ink px-4 py-2 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all text-sm"
+                >
+                  {copied ? "Copied!" : "Copy Link"}
+                </button>
+              )}
+              {isOwner && (
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleDeleteCollection}
+                    disabled={deletingCol}
+                    className="bg-magenta text-white px-4 py-2 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all text-sm disabled:opacity-50"
+                  >
+                    {deletingCol ? "Deleting…" : "Delete"}
+                  </button>
+                  <button
+                    onClick={() => setAdding((v) => !v)}
+                    className={`${colors.bg} text-ink px-4 py-2 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all text-sm`}
+                  >
+                    {adding ? "Hide picker" : "+ Add prompts"}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
 
-        {adding && (
+        {isOwner && adding && (
           <AddPromptPicker collectionId={collection.id} savedIds={collection.promptIds} onClose={() => setAdding(false)} />
         )}
 
@@ -234,13 +309,19 @@ function CollectionDetail() {
           <div className="py-16 text-center border-2 border-dashed border-ink">
             <div className="text-5xl mb-3">📚</div>
             <p className="font-display text-2xl uppercase text-ink/40">Empty Collection</p>
-            <p className="text-sm text-ink/60 mt-3 mb-6">Add your saved prompts to get started.</p>
-            <button
-              onClick={() => setAdding(true)}
-              className={`${colors.bg} text-ink px-6 py-3 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all`}
-            >
-              + Add Prompts Now
-            </button>
+            {isOwner ? (
+              <>
+                <p className="text-sm text-ink/60 mt-3 mb-6">Add your saved prompts to get started.</p>
+                <button
+                  onClick={() => setAdding(true)}
+                  className={`${colors.bg} text-ink px-6 py-3 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all`}
+                >
+                  + Add Prompts Now
+                </button>
+              </>
+            ) : (
+              <p className="text-sm text-ink/60 mt-3">This collection has no prompts yet.</p>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -262,14 +343,16 @@ function CollectionDetail() {
                     <span className="text-xs font-mono uppercase text-ink/60">Saved to binder</span>
                   </div>
                 </Link>
-                <button
-                  onClick={() => handleRemovePrompt(p.id)}
-                  disabled={removing === p.id}
-                  title="Remove from collection"
-                  className="absolute top-3 right-3 size-7 flex items-center justify-center bg-white border-2 border-ink text-magenta font-bold text-xs hover:bg-magenta hover:text-white transition-colors disabled:opacity-50"
-                >
-                  {removing === p.id ? "…" : "✕"}
-                </button>
+                {isOwner && (
+                  <button
+                    onClick={() => handleRemovePrompt(p.id)}
+                    disabled={removing === p.id}
+                    title="Remove from collection"
+                    className="absolute top-3 right-3 size-7 flex items-center justify-center bg-white border-2 border-ink text-magenta font-bold text-xs hover:bg-magenta hover:text-white transition-colors disabled:opacity-50"
+                  >
+                    {removing === p.id ? "…" : "✕"}
+                  </button>
+                )}
               </div>
             ))}
           </div>

@@ -3,9 +3,10 @@ import { z } from "zod";
 import { getSessionUser } from "../auth.server";
 import { getDb } from "../db.server";
 import { sanitize } from "../sanitize";
+import { insertNotification } from "./notifications.functions";
 
 export const createReview = createServerFn({ method: "POST" })
-  .validator(
+  .inputValidator(
     z.object({
       listingId: z.string().uuid(),
       rating: z.number().int().min(1).max(5),
@@ -37,15 +38,31 @@ export const createReview = createServerFn({ method: "POST" })
       [data.listingId, user.id, data.rating, data.body ? sanitize(data.body) : null]
     );
 
+    // Best-effort: never fails the review if this throws.
+    const listing = await db.query<{ user_id: string; title: string }>(
+      "SELECT user_id, title FROM prompt_listings WHERE id = $1",
+      [data.listingId]
+    );
+    if (listing.rows.length > 0 && listing.rows[0].user_id !== user.id) {
+      await insertNotification(
+        db,
+        listing.rows[0].user_id,
+        "review_received",
+        "New review on your prompt",
+        `"${listing.rows[0].title}" got a ${data.rating}-star review.`,
+        data.listingId
+      );
+    }
+
     return { ok: true as const };
   });
 
 export const listReviews = createServerFn({ method: "GET" })
-  .validator(z.object({ listingId: z.string().uuid() }))
+  .inputValidator(z.object({ listingId: z.string().uuid() }))
   .handler(async ({ data }) => {
     const db = getDb();
     const result = await db.query(
-      `SELECT reviews.rating, reviews.body, reviews.created_at, users.username
+      `SELECT reviews.user_id, reviews.rating, reviews.body, reviews.created_at, users.username
        FROM reviews
        JOIN users ON users.id = reviews.user_id
        WHERE reviews.listing_id = $1
@@ -54,6 +71,7 @@ export const listReviews = createServerFn({ method: "GET" })
     );
 
     return result.rows.map((row: any) => ({
+      userId: row.user_id,
       username: row.username,
       rating: row.rating,
       body: row.body,
@@ -61,8 +79,23 @@ export const listReviews = createServerFn({ method: "GET" })
     }));
   });
 
+export const deleteReview = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ listingId: z.string().uuid() }))
+  .handler(async ({ data }) => {
+    const user = await getSessionUser();
+    if (!user) throw new Error("You must be signed in.");
+
+    const db = getDb();
+    await db.query(
+      "DELETE FROM reviews WHERE listing_id = $1 AND user_id = $2",
+      [data.listingId, user.id]
+    );
+
+    return { ok: true as const };
+  });
+
 export const hasUserReviewed = createServerFn({ method: "GET" })
-  .validator(z.object({ listingId: z.string().uuid() }))
+  .inputValidator(z.object({ listingId: z.string().uuid() }))
   .handler(async ({ data }) => {
     const user = await getSessionUser();
     if (!user) return { reviewed: false };
@@ -75,7 +108,7 @@ export const hasUserReviewed = createServerFn({ method: "GET" })
   });
 
 export const getAverageRating = createServerFn({ method: "GET" })
-  .validator(z.object({ listingId: z.string().uuid() }))
+  .inputValidator(z.object({ listingId: z.string().uuid() }))
   .handler(async ({ data }) => {
     const db = getDb();
     const result = await db.query<{ average: string | null; count: string }>(

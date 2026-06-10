@@ -3,11 +3,12 @@ import { z } from "zod";
 import { getSessionUser } from "../auth.server";
 import { getDb } from "../db.server";
 import { sanitize } from "../sanitize";
+import { insertNotification } from "./notifications.functions";
 
 const REPORT_THRESHOLD = 5; // Auto-flag after this many reports
 
 export const reportListing = createServerFn({ method: "POST" })
-  .validator(
+  .inputValidator(
     z.object({
       listingId: z.string().uuid(),
       reason: z.enum(["nsfw_undisclosed", "spam", "stolen_content", "misleading", "other"]),
@@ -114,7 +115,7 @@ export const listReports = createServerFn({ method: "GET" })
   });
 
 export const moderateListing = createServerFn({ method: "POST" })
-  .validator(
+  .inputValidator(
     z.object({
       listingId: z.string().uuid(),
       action: z.enum(["restore", "remove"]),
@@ -129,10 +130,22 @@ export const moderateListing = createServerFn({ method: "POST" })
     const db = getDb();
     const newStatus = data.action === "restore" ? "published" : "removed";
 
-    await db.query(
-      "UPDATE prompt_listings SET status = $1 WHERE id = $2",
+    const result = await db.query<{ user_id: string; title: string }>(
+      "UPDATE prompt_listings SET status = $1 WHERE id = $2 RETURNING user_id, title",
       [newStatus, data.listingId]
     );
+
+    // Best-effort: never fails the moderation action if this throws.
+    if (data.action === "restore" && result.rows.length > 0) {
+      await insertNotification(
+        db,
+        result.rows[0].user_id,
+        "report_resolved",
+        "Your prompt was restored",
+        `"${result.rows[0].title}" was reviewed and restored to the marketplace.`,
+        data.listingId
+      );
+    }
 
     return { ok: true as const };
   });

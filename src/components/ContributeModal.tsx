@@ -415,7 +415,13 @@ export function ContributeModal({ open, onClose }: ContributeModalProps) {
                   disabled={submitting}
                   className="flex-1 bg-accent-orange text-white py-3 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all disabled:opacity-50"
                 >
-                  {submitting ? "Listing…" : "List on Market"}
+                  {submitting
+                    ? status === "draft"
+                      ? "Saving…"
+                      : "Listing…"
+                    : status === "draft"
+                      ? "Save Draft"
+                      : "List on Market"}
                 </button>
                 <button
                   type="button"

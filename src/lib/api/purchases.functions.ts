@@ -2,9 +2,10 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { getSessionUser } from "../auth.server";
 import { getDb } from "../db.server";
+import { insertNotification } from "./notifications.functions";
 
 export const purchaseListing = createServerFn({ method: "POST" })
-  .validator(z.object({ listingId: z.string().uuid() }))
+  .inputValidator(z.object({ listingId: z.string().uuid() }))
   .handler(async ({ data }) => {
     const user = await getSessionUser();
     if (!user) throw new Error("You must be signed in to purchase prompts.");
@@ -12,8 +13,8 @@ export const purchaseListing = createServerFn({ method: "POST" })
     const db = getDb();
 
     // Get listing details
-    const listing = await db.query<{ user_id: string; price: string; status: string }>(
-      "SELECT user_id, price, status FROM prompt_listings WHERE id = $1",
+    const listing = await db.query<{ user_id: string; price: string; status: string; title: string }>(
+      "SELECT user_id, price, status, title FROM prompt_listings WHERE id = $1",
       [data.listingId]
     );
 
@@ -21,7 +22,7 @@ export const purchaseListing = createServerFn({ method: "POST" })
       throw new Error("Listing not found.");
     }
 
-    const { user_id: sellerId, price: priceStr, status } = listing.rows[0];
+    const { user_id: sellerId, price: priceStr, status, title } = listing.rows[0];
     const price = parseFloat(priceStr);
 
     // Validation checks
@@ -114,6 +115,16 @@ export const purchaseListing = createServerFn({ method: "POST" })
 
       await db.query("COMMIT");
 
+      // Best-effort: never fails the purchase if this throws.
+      await insertNotification(
+        db,
+        sellerId,
+        "prompt_sold",
+        "Your prompt sold!",
+        `"${title}" just sold for $${sellerEarnings.toFixed(2)}.`,
+        data.listingId
+      );
+
       // Fetch updated balance for client
       const newCredits = await db.query<{ balance: string }>(
         "SELECT balance FROM user_credits WHERE user_id = $1",
@@ -176,7 +187,7 @@ export const listPurchases = createServerFn({ method: "GET" })
   });
 
 export const hasPurchased = createServerFn({ method: "GET" })
-  .validator(z.object({ listingId: z.string().uuid() }))
+  .inputValidator(z.object({ listingId: z.string().uuid() }))
   .handler(async ({ data }) => {
     const user = await getSessionUser();
     if (!user) return { purchased: false };
@@ -188,4 +199,18 @@ export const hasPurchased = createServerFn({ method: "GET" })
     );
 
     return { purchased: result.rows.length > 0 };
+  });
+
+export const listMyPurchasedListingIds = createServerFn({ method: "GET" })
+  .handler(async (): Promise<string[]> => {
+    const user = await getSessionUser();
+    if (!user) return [];
+
+    const db = getDb();
+    const result = await db.query<{ listing_id: string }>(
+      "SELECT listing_id FROM purchases WHERE buyer_id = $1",
+      [user.id]
+    );
+
+    return result.rows.map((row) => row.listing_id);
   });

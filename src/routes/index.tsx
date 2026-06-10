@@ -5,6 +5,7 @@ import { Navbar } from "@/components/Navbar";
 import { PromptCard } from "@/components/PromptCard";
 import { listListings } from "@/lib/api/listings.functions";
 import { listCollections } from "@/lib/api/collections.functions";
+import { listMyPurchasedListingIds } from "@/lib/api/purchases.functions";
 import { CATEGORIES, TAGS } from "@/lib/mock-data";
 import { MASCOTS, type MascotKey } from "@/lib/mascots";
 
@@ -21,20 +22,24 @@ const SORT_OPTIONS: { value: SortOption; label: string }[] = [
 const MASCOT_KEYS = Object.keys(MASCOTS) as MascotKey[];
 
 export const Route = createFileRoute("/")({
+  validateSearch: (search: Record<string, unknown>): { tag?: string } =>
+    typeof search.tag === "string" ? { tag: search.tag } : {},
   loader: async ({ context }) => {
     const listings = await listListings({ data: { limit: 100, offset: 0 } });
     // Load current user from cache or return null if not logged in
     const user = context.queryClient.getQueryData(["current-user"]);
     let collections = [];
-    if (user) {
-      try {
-        collections = await listCollections();
-      } catch {
-        // User may have logged out or session expired
-        collections = [];
-      }
+    let purchasedIds: string[] = [];
+    try {
+      // Both server fns check the session internally and return []
+      // for signed-out users, so this is safe to call unconditionally.
+      [collections, purchasedIds] = await Promise.all([listCollections(), listMyPurchasedListingIds()]);
+    } catch {
+      // User may have logged out or session expired
+      collections = [];
+      purchasedIds = [];
     }
-    return { listings, collections, user };
+    return { listings, collections, user, purchasedIds };
   },
   head: () => ({
     meta: [
@@ -46,11 +51,13 @@ export const Route = createFileRoute("/")({
 });
 
 function MarketPage() {
-  const { listings: initialListings, collections, user } = Route.useLoaderData();
+  const { listings: initialListings, collections, user, purchasedIds } = Route.useLoaderData();
+  const purchasedSet = useMemo(() => new Set(purchasedIds), [purchasedIds]);
+  const { tag: tagFromSearch } = Route.useSearch();
   const [listings, setListings] = useState(initialListings);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
-  const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [activeTag, setActiveTag] = useState<string | null>(tagFromSearch ?? null);
   const [sort, setSort] = useState<SortOption>("newest");
   const [isLoading, setIsLoading] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
@@ -315,7 +322,7 @@ function MarketPage() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 {filtered.map((p) => (
-                  <PromptCard key={p.id} prompt={p} />
+                  <PromptCard key={p.id} prompt={p} purchased={purchasedSet.has(p.id)} />
                 ))}
               </div>
             )}

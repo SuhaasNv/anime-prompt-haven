@@ -9,7 +9,7 @@ import type { Prompt } from "../mock-data";
 
 export const CURRENT_USER_QUERY_KEY = ["current-user"] as const;
 
-const MODEL_VALUES = ["Midjourney", "ChatGPT", "DALL-E", "Flux", "Stable Diffusion"] as const;
+export const MODEL_VALUES = ["Midjourney", "ChatGPT", "DALL-E", "Flux", "Stable Diffusion"] as const;
 const SHADOWS = ["magenta", "orange", "yellow", "purple"] as const;
 const ROTATIONS = [0, 1, -1] as const;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -23,6 +23,18 @@ async function requireUser() {
     throw new Error("You must be signed in.");
   }
   return user;
+}
+
+async function awardPublishBonus(db: ReturnType<typeof getDb>, userId: string) {
+  await db.query(
+    `INSERT INTO user_credits (user_id, balance) VALUES ($1, $2)
+     ON CONFLICT (user_id) DO UPDATE SET balance = user_credits.balance + $2, updated_at = now()`,
+    [userId, CREDIT_RATES.publishBonus]
+  );
+  await db.query(
+    `INSERT INTO credit_transactions (user_id, amount, type, note) VALUES ($1, $2, 'bonus', 'Publish reward')`,
+    [userId, CREDIT_RATES.publishBonus]
+  );
 }
 
 type ListingRow = {
@@ -66,11 +78,12 @@ const LISTING_COLUMNS = `
 `;
 
 export const listListings = createServerFn({ method: "GET" })
-  .validator(
+  .inputValidator(
     z.object({
       showNsfw: z.boolean().optional().default(false),
       sort: z.enum(["newest", "trending", "price_asc", "price_desc", "rating"]).optional().default("newest"),
       category: z.string().optional(),
+      model: z.enum(MODEL_VALUES).optional(),
       maxPrice: z.number().optional(),
       userId: z.string().uuid().optional(),
       limit: z.number().int().min(1).max(100).optional().default(24),
@@ -92,6 +105,12 @@ export const listListings = createServerFn({ method: "GET" })
     if (data.category) {
       whereConditions.push("prompt_listings.category = $" + (params.length + 1));
       params.push(data.category);
+    }
+
+    // Model filter
+    if (data.model) {
+      whereConditions.push("prompt_listings.model = $" + (params.length + 1));
+      params.push(data.model);
     }
 
     // Price filter
@@ -147,7 +166,7 @@ export const listListings = createServerFn({ method: "GET" })
   });
 
 export const getListing = createServerFn({ method: "GET" })
-  .validator(z.object({ id: z.string().min(1) }))
+  .inputValidator(z.object({ id: z.string().min(1) }))
   .handler(async ({ data }): Promise<Prompt | null> => {
     if (!UUID_RE.test(data.id)) return null;
 
@@ -165,7 +184,7 @@ export const getListing = createServerFn({ method: "GET" })
   });
 
 export const createListing = createServerFn({ method: "POST" })
-  .validator(
+  .inputValidator(
     z.object({
       title: z.string().min(2).max(80),
       description: z.string().min(10).max(280),
@@ -187,7 +206,9 @@ export const createListing = createServerFn({ method: "POST" })
     const user = await requireUser();
     const db = getDb();
 
-    // Check listing cap
+    // Check listing cap. Drafts intentionally count toward this cap too —
+    // otherwise users could stockpile unlimited drafts to bypass the limit
+    // the moment they're published.
     const activeListings = await db.query<{ count: string }>(
       "SELECT COUNT(*) as count FROM prompt_listings WHERE user_id = $1 AND status != 'removed'",
       [user.id]
@@ -236,22 +257,51 @@ export const createListing = createServerFn({ method: "POST" })
 
     // Publish bonus: +2.00 credits to the author
     if (data.status === "published") {
-      await db.query(
-        `INSERT INTO user_credits (user_id, balance) VALUES ($1, $2)
-         ON CONFLICT (user_id) DO UPDATE SET balance = user_credits.balance + $2, updated_at = now()`,
-        [user.id, CREDIT_RATES.publishBonus]
-      );
-      await db.query(
-        `INSERT INTO credit_transactions (user_id, amount, type, note) VALUES ($1, $2, 'bonus', 'Publish reward')`,
-        [user.id, CREDIT_RATES.publishBonus]
-      );
+      await awardPublishBonus(db, user.id);
     }
 
     return { id: listingId };
   });
 
+export const publishListing = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ id: z.string().uuid() }))
+  .handler(async ({ data }) => {
+    const user = await requireUser();
+    const db = getDb();
+
+    const listing = await db.query<{ user_id: string; status: string }>(
+      "SELECT user_id, status FROM prompt_listings WHERE id = $1",
+      [data.id]
+    );
+
+    if (listing.rows.length === 0) {
+      throw new Error("Listing not found.");
+    }
+
+    if (listing.rows[0].user_id !== user.id) {
+      throw new Error("You can only publish your own listings.");
+    }
+
+    if (listing.rows[0].status !== "draft") {
+      throw new Error("Only drafts can be published.");
+    }
+
+    const result = await db.query(
+      "UPDATE prompt_listings SET status = 'published' WHERE id = $1 AND status = 'draft'",
+      [data.id]
+    );
+
+    if (result.rowCount === 0) {
+      throw new Error("Only drafts can be published.");
+    }
+
+    await awardPublishBonus(db, user.id);
+
+    return { ok: true as const };
+  });
+
 export const deleteListing = createServerFn({ method: "POST" })
-  .validator(z.object({ id: z.string().uuid() }))
+  .inputValidator(z.object({ id: z.string().uuid() }))
   .handler(async ({ data }) => {
     const user = await requireUser();
     const db = getDb();
@@ -280,7 +330,7 @@ export const deleteListing = createServerFn({ method: "POST" })
   });
 
 export const updateListing = createServerFn({ method: "POST" })
-  .validator(
+  .inputValidator(
     z.object({
       id: z.string().uuid(),
       title: z.string().min(2).max(80).optional(),
@@ -455,7 +505,7 @@ export const listMyListings = createServerFn({ method: "GET" })
   });
 
 export const incrementViewCount = createServerFn({ method: "POST" })
-  .validator(z.object({ id: z.string().uuid() }))
+  .inputValidator(z.object({ id: z.string().uuid() }))
   .handler(async ({ data }) => {
     const user = await getSessionUser();
     if (!user) return { ok: true as const };

@@ -130,16 +130,16 @@ export function CreditsModal({ open, onClose, onBalanceChange }: CreditsModalPro
             ) : transactions.length === 0 ? (
               <p className="text-sm text-ink/50 text-center py-4">No transactions yet.</p>
             ) : (
-              <div className="space-y-1 max-h-48 overflow-y-auto">
+              <div className="space-y-1">
                 {transactions.map((tx) => {
                   const meta = TYPE_LABELS[tx.type] ?? { label: tx.type, color: "text-ink" };
                   return (
-                    <div key={tx.id} className="flex items-center justify-between py-2 border-b border-ink/10 text-sm">
-                      <div className="min-w-0">
-                        <span className={`font-bold uppercase text-xs ${meta.color}`}>{meta.label}</span>
-                        {tx.note && <span className="text-ink/50 ml-2 text-xs truncate">{tx.note}</span>}
+                    <div key={tx.id} className="flex items-center justify-between gap-2 py-2 border-b border-ink/10 text-sm">
+                      <div className="min-w-0 flex items-baseline gap-2">
+                        <span className={`font-bold uppercase text-xs shrink-0 ${meta.color}`}>{meta.label}</span>
+                        {tx.note && <span className="text-ink/50 text-xs truncate min-w-0">{tx.note}</span>}
                       </div>
-                      <span className={`font-mono font-bold text-xs shrink-0 ml-2 ${tx.amount >= 0 ? "text-green-600" : "text-magenta"}`}>
+                      <span className={`font-mono font-bold text-xs shrink-0 ${tx.amount >= 0 ? "text-green-600" : "text-magenta"}`}>
                         {tx.amount >= 0 ? "+" : ""}{tx.amount.toFixed(2)}
                       </span>
                     </div>

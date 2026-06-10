@@ -9,7 +9,7 @@ import { CURRENT_USER_QUERY_KEY, getCurrentUser } from "@/lib/api/auth.functions
 import { createCollection, listCollections } from "@/lib/api/collections.functions";
 import { listSavedPrompts } from "@/lib/api/saves.functions";
 import { listPurchases } from "@/lib/api/purchases.functions";
-import { getMyStats, listMyListings, type MyListing } from "@/lib/api/listings.functions";
+import { deleteListing, getMyStats, listMyListings, publishListing, type MyListing } from "@/lib/api/listings.functions";
 import type { GamificationStats } from "@/lib/gamification";
 import { PROMPTS } from "@/lib/mock-data";
 import type { Prompt } from "@/lib/mock-data";
@@ -139,6 +139,8 @@ function Dashboard() {
   const [myListings, setMyListings] = useState<MyListing[]>([]);
   const [loadingData, setLoadingData] = useState(true);
   const [gamificationStats, setGamificationStats] = useState<GamificationStats>({ listingsCount: 0, salesCount: 0, savesReceived: 0, reviewsWritten: 0 });
+  const [draftActionId, setDraftActionId] = useState<string | null>(null);
+  const [draftActionError, setDraftActionError] = useState<string | null>(null);
 
   useEffect(() => {
     const loadData = async () => {
@@ -157,6 +159,35 @@ function Dashboard() {
     };
     loadData();
   }, []);
+
+  const handlePublishDraft = async (id: string) => {
+    setDraftActionError(null);
+    setDraftActionId(id);
+    try {
+      await publishListing({ data: { id } });
+      const myListingsData = await listMyListings();
+      setMyListings(myListingsData);
+      await router.invalidate();
+    } catch (err) {
+      setDraftActionError(err instanceof Error ? err.message : "Couldn't publish that draft.");
+    } finally {
+      setDraftActionId(null);
+    }
+  };
+
+  const handleDeleteDraft = async (id: string) => {
+    setDraftActionError(null);
+    setDraftActionId(id);
+    try {
+      await deleteListing({ data: { id } });
+      const myListingsData = await listMyListings();
+      setMyListings(myListingsData);
+    } catch (err) {
+      setDraftActionError(err instanceof Error ? err.message : "Couldn't delete that draft.");
+    } finally {
+      setDraftActionId(null);
+    }
+  };
 
   return (
     <div className="min-h-screen">
@@ -313,6 +344,9 @@ function Dashboard() {
                               {c.vibe || "No vibe yet"}
                             </div>
                             <h3 className="font-display text-2xl uppercase mt-1">{c.name}</h3>
+                            <span className="inline-block mt-1 text-[10px] font-bold uppercase tracking-wider text-ink/50">
+                              {c.isPublic ? "🌐 Public" : "🔒 Private"}
+                            </span>
                           </div>
                           <div className={`size-10 ${colors.bg} border-2 border-ink flex items-center justify-center font-display text-xl text-ink`}>
                             {c.name.charAt(0)}
@@ -464,9 +498,13 @@ function Dashboard() {
                       ))}
                     </div>
 
+                    {draftActionError && (
+                      <p className="text-xs font-bold text-magenta bg-magenta/10 p-2 border-l-4 border-magenta mb-4">{draftActionError}</p>
+                    )}
+
                     {/* Listing cards */}
                     <div className="space-y-4">
-                      {myListings.map((listing) => (
+                      {myListings.filter((l) => l.status !== "draft").map((listing) => (
                         <div key={listing.id} className="bg-white border-4 border-ink shadow-pop hover:shadow-pop-lg transition-shadow">
                           <div className="flex gap-4 p-4">
                             <img
@@ -525,6 +563,57 @@ function Dashboard() {
                         </div>
                       ))}
                     </div>
+
+                    {/* Drafts */}
+                    {myListings.some((l) => l.status === "draft") && (
+                      <>
+                        <h3 className="font-display text-xl uppercase mt-10 mb-4 border-b-2 border-ink pb-2">Drafts</h3>
+                        <div className="space-y-4">
+                          {myListings.filter((l) => l.status === "draft").map((listing) => (
+                            <div key={listing.id} className="bg-white border-4 border-ink shadow-pop">
+                              <div className="flex gap-4 p-4">
+                                <img
+                                  src={listing.image}
+                                  alt={listing.title}
+                                  loading="lazy"
+                                  className="size-20 object-cover border-2 border-ink shrink-0 opacity-80"
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-start justify-between gap-2 mb-1">
+                                    <h3 className="font-display uppercase text-lg leading-tight truncate">{listing.title}</h3>
+                                    <span className="shrink-0 px-2 py-0.5 text-[10px] font-bold uppercase border-2 bg-accent-yellow border-ink text-ink">
+                                      draft
+                                    </span>
+                                  </div>
+                                  <div className="text-sm font-bold text-ink/70">
+                                    {listing.price === 0 ? "Free" : `✦ ${listing.price.toFixed(2)}`}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="border-t-4 border-ink px-4 py-2.5 flex items-center justify-end gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteDraft(listing.id)}
+                                  disabled={draftActionId === listing.id}
+                                  className="px-3 py-1.5 bg-white text-ink text-xs font-display uppercase border-2 border-ink hover:bg-ink hover:text-white transition-colors disabled:opacity-50"
+                                >
+                                  {draftActionId === listing.id ? "…" : "Delete"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handlePublishDraft(listing.id)}
+                                  disabled={draftActionId === listing.id}
+                                  className="px-3 py-1.5 bg-magenta text-white text-xs font-display uppercase border-2 border-ink shadow-[3px_3px_0_0_#0a0a0c] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all disabled:opacity-50"
+                                >
+                                  {draftActionId === listing.id ? "Publishing…" : "Publish Now"}
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    )}
                   </>
                 )}
               </>

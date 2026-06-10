@@ -10,7 +10,7 @@ const shadowMap = {
   black: "shadow-pop-lg",
 } as const;
 
-export function PromptCard({ prompt }: { prompt: Prompt }) {
+export function PromptCard({ prompt, purchased = false }: { prompt: Prompt; purchased?: boolean }) {
   const rotate = prompt.rotate === 1 ? "rotate-1" : prompt.rotate === -1 ? "-rotate-1" : "";
   return (
     <motion.div
@@ -19,9 +19,13 @@ export function PromptCard({ prompt }: { prompt: Prompt }) {
       viewport={{ once: true, margin: "-50px" }}
       whileHover={{ rotate: -2, scale: 1.02 }}
       transition={{ type: "spring", stiffness: 260, damping: 22 }}
-      className={`bg-white border-2 border-ink p-4 ${shadowMap[prompt.shadow]} ${rotate} hover:drop-shadow-[0_0_18px_rgba(212,0,255,0.45)]`}
+      className={`relative bg-white border-2 border-ink p-4 ${shadowMap[prompt.shadow]} ${rotate} hover:drop-shadow-[0_0_18px_rgba(212,0,255,0.45)]`}
     >
-      <Link to="/prompt/$id" params={{ id: prompt.id }} className="block">
+      {/* Stretched link covers the whole card; the @creator link below sits
+          above it (pointer-events-auto) so it remains independently clickable
+          without nesting an <a> inside an <a>. */}
+      <Link to="/prompt/$id" params={{ id: prompt.id }} className="absolute inset-0 z-0" aria-label={prompt.title} />
+      <div className="relative pointer-events-none">
         <div className="w-full aspect-[4/3] mb-4 overflow-hidden border-2 border-ink relative bg-ink">
           <img
             src={prompt.image}
@@ -45,13 +49,25 @@ export function PromptCard({ prompt }: { prompt: Prompt }) {
           <div className="size-6 rounded-full bg-ink text-white text-xs flex items-center justify-center border border-ink">
             {prompt.creatorEmoji}
           </div>
-          <span className="text-xs font-bold text-ink/60 tracking-wider uppercase">@{prompt.creator}</span>
+          <Link
+            to="/u/$username"
+            params={{ username: prompt.creator }}
+            className="pointer-events-auto relative z-10 text-xs font-bold text-ink/60 tracking-wider uppercase hover:text-magenta hover:underline"
+          >
+            @{prompt.creator}
+          </Link>
           <span className="ml-auto text-xs font-bold text-accent-orange">★ {prompt.rating.toFixed(1)}</span>
         </div>
-        <div className="w-full bg-ink text-white py-3 font-bold uppercase text-center hover:bg-magenta transition-colors text-sm">
-          {prompt.price === 0 ? "Copy Prompt" : "View Prompt"}
-        </div>
-      </Link>
+        {prompt.price > 0 && purchased ? (
+          <div className="w-full bg-green-600 text-white py-3 font-bold uppercase text-center text-sm">
+            ✓ Already Bought
+          </div>
+        ) : (
+          <div className="w-full bg-ink text-white py-3 font-bold uppercase text-center hover:bg-magenta transition-colors text-sm">
+            {prompt.price === 0 ? "Copy Prompt" : "View Prompt"}
+          </div>
+        )}
+      </div>
     </motion.div>
   );
 }

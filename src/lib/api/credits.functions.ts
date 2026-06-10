@@ -2,6 +2,8 @@ import { createServerFn } from "@tanstack/react-start";
 import { getSessionUser } from "../auth.server";
 import { getDb } from "../db.server";
 
+export const CREDITS_QUERY_KEY = ["credits"] as const;
+
 export const getMyCredits = createServerFn({ method: "GET" })
   .handler(async () => {
     const user = await getSessionUser();

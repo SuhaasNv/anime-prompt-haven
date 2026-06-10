@@ -5,7 +5,7 @@ import { getDb } from "../db.server";
 import { CREDIT_RATES } from "../gamification";
 
 export const recordCopy = createServerFn({ method: "POST" })
-  .validator(z.object({ listingId: z.string().uuid() }))
+  .inputValidator(z.object({ listingId: z.string().uuid() }))
   .handler(async ({ data }) => {
     const user = await getSessionUser();
     if (!user) return { ok: true as const }; // anonymous copies don't earn rewards

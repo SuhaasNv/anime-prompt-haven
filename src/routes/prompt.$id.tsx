@@ -1,16 +1,18 @@
 import { createFileRoute, Link, notFound, useRouter } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Navbar } from "@/components/Navbar";
 import { SaveToCollectionModal } from "@/components/SaveToCollectionModal";
 import { ReportModal } from "@/components/ReportModal";
+import { PurchaseModal } from "@/components/PurchaseModal";
 import { getListing, incrementViewCount, deleteListing, updateListing } from "@/lib/api/listings.functions";
 import { getPrompt, PROMPTS, type Prompt } from "@/lib/mock-data";
 import { getCurrentUser } from "@/lib/api/auth.functions";
 import { isSaved, savePrompt, unsavePrompt } from "@/lib/api/saves.functions";
-import { purchaseListing, hasPurchased } from "@/lib/api/purchases.functions";
-import { listReviews, getAverageRating, hasUserReviewed, createReview } from "@/lib/api/reviews.functions";
-import { getMyCredits } from "@/lib/api/credits.functions";
+import { hasPurchased } from "@/lib/api/purchases.functions";
+import { listReviews, getAverageRating, hasUserReviewed, createReview, deleteReview } from "@/lib/api/reviews.functions";
+import { CREDITS_QUERY_KEY, getMyCredits } from "@/lib/api/credits.functions";
 import { recordCopy } from "@/lib/api/copies.functions";
 
 export const Route = createFileRoute("/prompt/$id")({
@@ -45,7 +47,7 @@ export const Route = createFileRoute("/prompt/$id")({
 });
 
 interface Review {
-  id: string;
+  userId: string;
   username: string;
   rating: number;
   body: string;
@@ -54,9 +56,11 @@ interface Review {
 
 function PromptDetail() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { prompt } = Route.useLoaderData() as { prompt: Prompt };
   const [modalOpen, setModalOpen] = useState(false);
   const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [purchaseModalOpen, setPurchaseModalOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [saved, setSaved] = useState(false);
   const [reviews, setReviews] = useState<Review[]>([]);
@@ -64,7 +68,6 @@ function PromptDetail() {
   const [currentUser, setCurrentUser] = useState<{ id: string; username: string } | null>(null);
   const [userCredits, setUserCredits] = useState(0);
   const [hasOwnedListing, setHasOwnedListing] = useState(false);
-  const [buying, setBuying] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editTitle, setEditTitle] = useState("");
@@ -76,6 +79,9 @@ function PromptDetail() {
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewBody, setReviewBody] = useState("");
   const [submittingReview, setSubmittingReview] = useState(false);
+  const [isEditingReview, setIsEditingReview] = useState(false);
+  const [deletingReview, setDeletingReview] = useState(false);
+  const [confirmingDeleteReview, setConfirmingDeleteReview] = useState(false);
 
   const related = PROMPTS.filter((p) => p.id !== prompt.id).slice(0, 3);
 
@@ -152,27 +158,10 @@ function PromptDetail() {
     }
   };
 
-  const handlePurchase = async () => {
-    if (!currentUser) {
-      router.navigate({ to: "/auth" });
-      return;
-    }
-    if (userCredits < prompt.price) {
-      alert(`Insufficient credits. You need $${prompt.price}, you have $${userCredits.toFixed(2)}.`);
-      return;
-    }
-    setBuying(true);
-    try {
-      const result = await purchaseListing({ data: { listingId: prompt.id } });
-      setUserCredits(result.newBalance);
-      setHasOwnedListing(true);
-      alert("Purchase successful! 🎉");
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Purchase failed";
-      alert(message);
-    } finally {
-      setBuying(false);
-    }
+  const handlePurchaseSuccess = (newBalance: number) => {
+    setUserCredits(newBalance);
+    queryClient.setQueryData(CREDITS_QUERY_KEY, { balance: newBalance });
+    setHasOwnedListing(true);
   };
 
   const handleDelete = async () => {
@@ -222,11 +211,46 @@ function PromptDetail() {
       setReviews(reviewsList as Review[]);
       setAvgRating(rating.average);
       setHasAlreadyReviewed(true);
-      setReviewBody("");
+      setIsEditingReview(false);
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to submit review");
     } finally {
       setSubmittingReview(false);
+    }
+  };
+
+  const handleEditReview = (review: Review) => {
+    setReviewRating(review.rating);
+    setReviewBody(review.body ?? "");
+    setIsEditingReview(true);
+    setConfirmingDeleteReview(false);
+  };
+
+  const handleCancelEditReview = () => {
+    setIsEditingReview(false);
+    setReviewRating(5);
+    setReviewBody("");
+  };
+
+  const handleDeleteReview = async () => {
+    setDeletingReview(true);
+    try {
+      await deleteReview({ data: { listingId: prompt.id } });
+      const [reviewsList, rating] = await Promise.all([
+        listReviews({ data: { listingId: prompt.id } }),
+        getAverageRating({ data: { listingId: prompt.id } }),
+      ]);
+      setReviews(reviewsList as Review[]);
+      setAvgRating(rating.average);
+      setHasAlreadyReviewed(false);
+      setIsEditingReview(false);
+      setReviewRating(5);
+      setReviewBody("");
+      setConfirmingDeleteReview(false);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete review");
+    } finally {
+      setDeletingReview(false);
     }
   };
 
@@ -286,21 +310,64 @@ function PromptDetail() {
                 {reviews.length === 0 ? (
                   <p className="text-sm text-ink/60">No reviews yet. Be the first to share your thoughts!</p>
                 ) : (
-                  reviews.map((r, i) => (
-                    <div key={i} className="bg-white border-2 border-ink p-4">
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="font-bold uppercase text-sm">@{r.username}</span>
-                        <span className="text-accent-orange text-sm">{"★".repeat(r.rating)}</span>
+                  reviews.map((r, i) => {
+                    const isMine = currentUser && r.userId === currentUser.id;
+                    return (
+                      <div key={i} className="bg-white border-2 border-ink p-4">
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="font-bold uppercase text-sm">@{r.username}</span>
+                          <span className="text-accent-orange text-sm">{"★".repeat(r.rating)}</span>
+                        </div>
+                        <p className="text-sm text-ink/80">{r.body}</p>
+                        {isMine && (
+                          confirmingDeleteReview ? (
+                            <div className="flex items-center gap-3 mt-2 pt-2 border-t border-ink/10">
+                              <span className="text-[10px] font-bold uppercase tracking-widest text-ink/60">Delete this review?</span>
+                              <button
+                                type="button"
+                                onClick={handleDeleteReview}
+                                disabled={deletingReview}
+                                className="text-[10px] font-bold uppercase tracking-widest text-magenta hover:underline disabled:opacity-50"
+                              >
+                                {deletingReview ? "Deleting…" : "Yes, delete"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setConfirmingDeleteReview(false)}
+                                disabled={deletingReview}
+                                className="text-[10px] font-bold uppercase tracking-widest text-ink/50 hover:text-ink transition-colors disabled:opacity-50"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex gap-3 mt-2 pt-2 border-t border-ink/10">
+                              <button
+                                type="button"
+                                onClick={() => handleEditReview(r)}
+                                className="text-[10px] font-bold uppercase tracking-widest text-ink/50 hover:text-magenta transition-colors"
+                              >
+                                ✎ Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setConfirmingDeleteReview(true)}
+                                className="text-[10px] font-bold uppercase tracking-widest text-ink/50 hover:text-magenta transition-colors"
+                              >
+                                🗑 Delete
+                              </button>
+                            </div>
+                          )
+                        )}
                       </div>
-                      <p className="text-sm text-ink/80">{r.body}</p>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
 
-              {hasOwnedListing && !hasAlreadyReviewed && (
+              {hasOwnedListing && (!hasAlreadyReviewed || isEditingReview) && (
                 <form onSubmit={handleSubmitReview} className="mt-6 bg-white border-4 border-ink p-5">
-                  <h4 className="font-display text-xl uppercase mb-3">Leave a Review</h4>
+                  <h4 className="font-display text-xl uppercase mb-3">{isEditingReview ? "Edit Your Review" : "Leave a Review"}</h4>
                   <div className="flex gap-2 mb-3">
                     {[1,2,3,4,5].map((n) => (
                       <button
@@ -320,13 +387,25 @@ function PromptDetail() {
                     placeholder="Share your experience with this prompt…"
                     className="w-full border-2 border-ink p-3 font-medium text-sm focus:outline-none focus:ring-4 focus:ring-magenta/30 resize-none"
                   />
-                  <button
-                    type="submit"
-                    disabled={submittingReview}
-                    className="mt-3 w-full bg-magenta text-white py-3 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all disabled:opacity-50"
-                  >
-                    {submittingReview ? "Submitting…" : "Submit Review"}
-                  </button>
+                  <div className="flex gap-2 mt-3">
+                    <button
+                      type="submit"
+                      disabled={submittingReview}
+                      className="flex-1 bg-magenta text-white py-3 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all disabled:opacity-50"
+                    >
+                      {submittingReview ? "Submitting…" : isEditingReview ? "Update Review" : "Submit Review"}
+                    </button>
+                    {isEditingReview && (
+                      <button
+                        type="button"
+                        onClick={handleCancelEditReview}
+                        disabled={submittingReview}
+                        className="px-5 bg-white text-ink py-3 font-display uppercase border-2 border-ink hover:bg-ink hover:text-white transition-colors disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                    )}
+                  </div>
                 </form>
               )}
             </div>
@@ -400,11 +479,16 @@ function PromptDetail() {
                     </button>
                   ) : (
                     <button
-                      onClick={handlePurchase}
-                      disabled={buying || !currentUser}
+                      onClick={() => {
+                        if (!currentUser) {
+                          router.navigate({ to: "/auth" });
+                          return;
+                        }
+                        setPurchaseModalOpen(true);
+                      }}
                       className="w-full bg-accent-orange text-white py-4 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all disabled:opacity-50"
                     >
-                      {buying ? "Processing..." : currentUser ? `Buy for $${prompt.price}` : "Sign in to Buy"}
+                      {currentUser ? `Buy for $${prompt.price}` : "Sign in to Buy"}
                     </button>
                   )}
 
@@ -433,20 +517,6 @@ function PromptDetail() {
                     </>
                   )}
 
-                  {!isOwner && (
-                    <button
-                      onClick={() => {
-                        if (!currentUser) {
-                          router.navigate({ to: "/auth" });
-                          return;
-                        }
-                        setReportModalOpen(true);
-                      }}
-                      className="w-full bg-white text-magenta py-3 font-bold uppercase border-2 border-magenta text-xs shadow-[3px_3px_0_0_#d400ff] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all"
-                    >
-                      🚩 Report
-                    </button>
-                  )}
                 </div>
 
                 <div className="flex flex-wrap gap-2 mt-5 pt-5 border-t-2 border-ink">
@@ -459,6 +529,23 @@ function PromptDetail() {
                     </span>
                   ))}
                 </div>
+
+                {!isOwner && (
+                  <div className="mt-4 pt-4 border-t border-ink/10 text-center">
+                    <button
+                      onClick={() => {
+                        if (!currentUser) {
+                          router.navigate({ to: "/auth" });
+                          return;
+                        }
+                        setReportModalOpen(true);
+                      }}
+                      className="text-[10px] font-bold uppercase tracking-widest text-ink/40 hover:text-magenta transition-colors"
+                    >
+                      🚩 Report this listing
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </aside>
@@ -499,6 +586,16 @@ function PromptDetail() {
         onClose={() => setReportModalOpen(false)}
         listingId={prompt.id}
         listingTitle={prompt.title}
+      />
+
+      <PurchaseModal
+        open={purchaseModalOpen}
+        onClose={() => setPurchaseModalOpen(false)}
+        listingId={prompt.id}
+        title={prompt.title}
+        price={prompt.price}
+        userCredits={userCredits}
+        onSuccess={handlePurchaseSuccess}
       />
 
       {editOpen && (

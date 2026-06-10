@@ -4,7 +4,7 @@ import { getSessionUser } from "../auth.server";
 import { getDb } from "../db.server";
 
 export const savePrompt = createServerFn({ method: "POST" })
-  .validator(z.object({ listingId: z.string().uuid() }))
+  .inputValidator(z.object({ listingId: z.string().uuid() }))
   .handler(async ({ data }) => {
     const user = await getSessionUser();
     if (!user) throw new Error("You must be signed in to save prompts.");
@@ -25,7 +25,7 @@ export const savePrompt = createServerFn({ method: "POST" })
   });
 
 export const unsavePrompt = createServerFn({ method: "POST" })
-  .validator(z.object({ listingId: z.string().uuid() }))
+  .inputValidator(z.object({ listingId: z.string().uuid() }))
   .handler(async ({ data }) => {
     const user = await getSessionUser();
     if (!user) throw new Error("You must be signed in to unsave prompts.");
@@ -50,7 +50,7 @@ export const unsavePrompt = createServerFn({ method: "POST" })
   });
 
 export const isSaved = createServerFn({ method: "GET" })
-  .validator(z.object({ listingId: z.string().uuid() }))
+  .inputValidator(z.object({ listingId: z.string().uuid() }))
   .handler(async ({ data }) => {
     const user = await getSessionUser();
     if (!user) return { saved: false };

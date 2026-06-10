@@ -15,7 +15,7 @@ const MASCOT_VALUES = ["nova", "comet"] as const;
 export const CURRENT_USER_QUERY_KEY = ["current-user"] as const;
 
 export const signUp = createServerFn({ method: "POST" })
-  .validator(
+  .inputValidator(
     z.object({
       email: z.string().email(),
       username: z.string().min(2).max(40),
@@ -30,13 +30,26 @@ export const signUp = createServerFn({ method: "POST" })
       throw new Error("An account with that email already exists.");
     }
 
-    const passwordHash = await bcrypt.hash(data.password, 10);
-    const inserted = await db.query<{ id: string }>(
-      "INSERT INTO users (email, username, password_hash, mascot) VALUES ($1, $2, $3, $4) RETURNING id",
-      [data.email, sanitize(data.username), passwordHash, data.mascot],
-    );
+    const username = sanitize(data.username);
+    const existingUsername = await db.query("SELECT id FROM users WHERE username = $1", [username]);
+    if (existingUsername.rows.length > 0) {
+      throw new Error("That username is already taken.");
+    }
 
-    const userId = inserted.rows[0].id;
+    const passwordHash = await bcrypt.hash(data.password, 10);
+    let userId: string;
+    try {
+      const inserted = await db.query<{ id: string }>(
+        "INSERT INTO users (email, username, password_hash, mascot) VALUES ($1, $2, $3, $4) RETURNING id",
+        [data.email, username, passwordHash, data.mascot],
+      );
+      userId = inserted.rows[0].id;
+    } catch (err) {
+      if (err && typeof err === "object" && "code" in err && err.code === "23505") {
+        throw new Error("That username is already taken.");
+      }
+      throw err;
+    }
 
     // Initialize user credits with welcome bonus
     await db.query(
@@ -55,7 +68,7 @@ export const signUp = createServerFn({ method: "POST" })
   });
 
 export const setMascot = createServerFn({ method: "POST" })
-  .validator(z.object({ mascot: z.enum(MASCOT_VALUES) }))
+  .inputValidator(z.object({ mascot: z.enum(MASCOT_VALUES) }))
   .handler(async ({ data }) => {
     const user = await getSessionUser();
     if (!user) {
@@ -67,7 +80,7 @@ export const setMascot = createServerFn({ method: "POST" })
   });
 
 export const signIn = createServerFn({ method: "POST" })
-  .validator(
+  .inputValidator(
     z.object({
       email: z.string().email(),
       password: z.string().min(1),
@@ -103,8 +116,58 @@ export const getCurrentUser = createServerFn({ method: "GET" }).handler(async ()
   return getSessionUser();
 });
 
+export interface UserProfile {
+  id: string;
+  username: string;
+  bio: string | null;
+  mascot: "nova" | "comet";
+  createdAt: string;
+  listingsCount: number;
+  salesCount: number;
+  savesReceived: number;
+}
+
+export const getUserProfile = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ username: z.string().min(1).max(40) }))
+  .handler(async ({ data }): Promise<UserProfile | null> => {
+    const db = getDb();
+    const result = await db.query<{
+      id: string;
+      username: string;
+      bio: string | null;
+      mascot: "nova" | "comet";
+      created_at: string;
+      listings_count: string;
+      sales_count: string;
+      saves_received: string;
+    }>(
+      `SELECT
+         u.id, u.username, u.bio, u.mascot, u.created_at,
+         (SELECT COUNT(*) FROM prompt_listings WHERE user_id = u.id AND status = 'published') AS listings_count,
+         (SELECT COUNT(*) FROM purchases p JOIN prompt_listings pl ON pl.id = p.listing_id WHERE pl.user_id = u.id) AS sales_count,
+         (SELECT COALESCE(SUM(save_count), 0) FROM prompt_listings WHERE user_id = u.id AND status = 'published') AS saves_received
+       FROM users u
+       WHERE u.username = $1`,
+      [data.username],
+    );
+
+    const row = result.rows[0];
+    if (!row) return null;
+
+    return {
+      id: row.id,
+      username: row.username,
+      bio: row.bio,
+      mascot: row.mascot,
+      createdAt: row.created_at,
+      listingsCount: parseInt(row.listings_count, 10),
+      salesCount: parseInt(row.sales_count, 10),
+      savesReceived: parseInt(row.saves_received, 10),
+    };
+  });
+
 export const updateBio = createServerFn({ method: "POST" })
-  .validator(z.object({ bio: z.string().max(300) }))
+  .inputValidator(z.object({ bio: z.string().max(300) }))
   .handler(async ({ data }) => {
     const user = await getSessionUser();
     if (!user) throw new Error("You must be signed in.");
