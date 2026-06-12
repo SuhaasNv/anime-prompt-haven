@@ -116,11 +116,13 @@ function ExplorePage() {
                   className="group bg-white border-2 border-ink p-4 text-center shadow-pop hover:shadow-pop-magenta transition-all"
                 >
                   <img
-                    src={MASCOTS[creator.mascot].image}
+                    src={creator.avatarUrl ?? MASCOTS[creator.mascot].image}
                     alt=""
                     width={64}
                     height={64}
-                    className="size-16 mx-auto border-2 border-ink rounded-full bg-accent-yellow object-contain"
+                    className={`size-16 mx-auto border-2 border-ink rounded-full bg-accent-yellow ${
+                      creator.avatarUrl ? "object-cover" : "object-contain"
+                    }`}
                   />
                   <div className="font-bold uppercase text-xs mt-2 truncate group-hover:text-magenta">
                     @{creator.username}

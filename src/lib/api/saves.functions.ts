@@ -70,7 +70,19 @@ export const listSavedPrompts = createServerFn({ method: "GET" })
     if (!user) return [];
 
     const db = getDb();
-    const result = await db.query(
+    const result = await db.query<{
+      id: string;
+      title: string;
+      description: string;
+      body: string;
+      image: string;
+      price: string;
+      category: string;
+      model: string;
+      tags: string[];
+      username: string;
+      avg_rating: number;
+    }>(
       `SELECT
         prompt_listings.id,
         prompt_listings.title,
@@ -81,16 +93,20 @@ export const listSavedPrompts = createServerFn({ method: "GET" })
         prompt_listings.category,
         prompt_listings.model,
         prompt_listings.tags,
-        users.username
+        users.username,
+        COALESCE(avg_r.avg_rating, 0)::float AS avg_rating
       FROM saved_prompts
       JOIN prompt_listings ON prompt_listings.id = saved_prompts.listing_id
       JOIN users ON users.id = prompt_listings.user_id
+      LEFT JOIN (
+        SELECT listing_id, AVG(rating) AS avg_rating FROM reviews GROUP BY listing_id
+      ) avg_r ON avg_r.listing_id = prompt_listings.id
       WHERE saved_prompts.user_id = $1 AND prompt_listings.status = 'published'
       ORDER BY saved_prompts.saved_at DESC`,
       [user.id]
     );
 
-    return result.rows.map((row: any) => ({
+    return result.rows.map((row) => ({
       id: row.id,
       title: row.title,
       description: row.description,
@@ -101,7 +117,7 @@ export const listSavedPrompts = createServerFn({ method: "GET" })
       model: row.model,
       tags: row.tags,
       creator: row.username,
-      rating: 4.5, // TODO: Calculate from reviews
+      rating: row.avg_rating,
       shadow: "", // Decorative value
       rotate: 0, // Decorative value
     }));

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Navbar } from "@/components/Navbar";
 import { PromptCard } from "@/components/PromptCard";
+import { CURRENT_USER_QUERY_KEY, getCurrentUser } from "@/lib/api/auth.functions";
 import { listListings } from "@/lib/api/listings.functions";
 import { listCollections } from "@/lib/api/collections.functions";
 import { listMyPurchasedListingIds } from "@/lib/api/purchases.functions";
@@ -26,8 +27,14 @@ export const Route = createFileRoute("/")({
     typeof search.tag === "string" ? { tag: search.tag } : {},
   loader: async ({ context }) => {
     const listings = await listListings({ data: { limit: 100, offset: 0 } });
-    // Load current user from cache or return null if not logged in
-    const user = context.queryClient.getQueryData(["current-user"]);
+    // Prefetch (and cache) the session so "Manage Prompt" vs "View Prompt" is
+    // correct on the very first render instead of flashing the wrong label
+    // while a client-side fetch resolves.
+    const user = await context.queryClient.ensureQueryData({
+      queryKey: CURRENT_USER_QUERY_KEY,
+      queryFn: getCurrentUser,
+      staleTime: 60_000,
+    });
     let collections = [];
     let purchasedIds: string[] = [];
     try {
@@ -322,7 +329,12 @@ function MarketPage() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 {filtered.map((p) => (
-                  <PromptCard key={p.id} prompt={p} purchased={purchasedSet.has(p.id)} />
+                  <PromptCard
+                    key={p.id}
+                    prompt={p}
+                    purchased={purchasedSet.has(p.id)}
+                    currentUserId={user?.id}
+                  />
                 ))}
               </div>
             )}

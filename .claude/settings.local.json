@@ -30,7 +30,31 @@
       "Bash(git commit -m 'fix: correct saved_prompts index to use listing_id instead of prompt_id *)",
       "Bash(git push *)",
       "Bash(curl -s http://localhost:5173)",
-      "Skill(update-config)"
+      "Skill(update-config)",
+      "Bash(grep -n \"MAX_PRICE\\\\|price\\\\|\\\\\\\\\\\\$\" src/lib/api/listings.functions.ts)",
+      "Bash(grep -n -i \"price\\\\|\\\\\\\\\\\\$\\\\|credit\" src/components/ContributeModal.tsx src/components/PromptCard.tsx src/components/CreditBalanceWidget.tsx src/components/CreditsModal.tsx)",
+      "Bash(grep -n -E '\\\\$|USD|price|MAX_PRICE|49\\\\.99|toFixed|parseFloat|✦|credits|step|range' src/components/ContributeModal.tsx)",
+      "Bash(grep -n -E '\\\\$|USD|price|toFixed|parseFloat|✦|credits' src/components/PromptCard.tsx)",
+      "Read(//Users/suhaasnv/Documents/Desktop ALT/portfolioprojects/anime-prompt-haven/src/routes/**)",
+      "Bash(grep -n -E '\\\\$|USD|price|toFixed|parseFloat|✦|credits|balance' src/components/CreditsModal.tsx)",
+      "Bash(grep -n -E '\\\\$|USD|price|MAX_PRICE|49\\\\.99|toFixed|parseFloat|✦' src/lib/api/listings.functions.ts)",
+      "Bash(grep -n -E '\\\\$|USD|price|toFixed|parseFloat|✦|0\\\\.7|0\\\\.3|commission' src/lib/api/purchases.functions.ts)",
+      "Bash(grep -n -E '\\\\$|USD|price|toFixed|parseFloat|✦|credits|balance' src/lib/api/credits.functions.ts)",
+      "Bash(grep -n -E '\\\\$|USD|price|toFixed|parseFloat|✦|MAX_PRICE|range|slider' src/routes/explore.tsx)",
+      "Bash(grep -n -E '\\\\$|USD|price|toFixed|parseFloat|✦|MAX_PRICE' src/lib/api/explore.functions.ts)",
+      "Bash(grep -n -E '\\\\$|USD|price|toFixed|parseFloat|✦|revenue' src/components/admin/FinancialTab.tsx)",
+      "Bash(grep -n -E '\\\\$|USD|price|toFixed|parseFloat|✦' src/components/admin/ReportsTab.tsx)",
+      "Bash(grep -n -E '\\\\$|USD|price|toFixed|parseFloat|✦' src/components/admin/ListingsTab.tsx)",
+      "Bash(grep -n -E '\\\\$|USD|price|toFixed|parseFloat|✦|49\\\\.99' src/lib/mock-data.ts)",
+      "Bash(grep -n -E '\\\\$|USD|price|toFixed|parseFloat|✦|credits' src/components/PurchaseModal.tsx)",
+      "Bash(grep -n -E '\\\\$|USD|price|toFixed|parseFloat|✦|credits|balance' src/components/CreditBalanceWidget.tsx)",
+      "Bash(grep -n \"\\\\$\\\\|toFixed\\\\|price\" src/routes/explore.tsx)",
+      "Bash(bun install *)",
+      "Bash(bun run *)",
+      "Bash(grep -n 'toFixed\\\\|\\\\$' src/lib/api/purchases.functions.ts)",
+      "Bash(bun add *)",
+      "Bash(pkill -f \"npm run dev\")",
+      "Bash(pkill -f \"vite\")"
     ]
   }
 }

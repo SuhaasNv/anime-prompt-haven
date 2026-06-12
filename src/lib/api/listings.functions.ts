@@ -4,6 +4,8 @@ import { z } from "zod";
 import { getSessionUser } from "../auth.server";
 import { getDb } from "../db.server";
 import { sanitize } from "../sanitize";
+import { validateAndNormalizeImage } from "../image-validation.server";
+import { checkRateLimit } from "../rate-limit.server";
 import { CREDIT_RATES } from "../gamification";
 import type { Prompt } from "../mock-data";
 
@@ -12,9 +14,12 @@ export const CURRENT_USER_QUERY_KEY = ["current-user"] as const;
 export const MODEL_VALUES = ["Midjourney", "ChatGPT", "DALL-E", "Flux", "Stable Diffusion"] as const;
 const SHADOWS = ["magenta", "orange", "yellow", "purple"] as const;
 const ROTATIONS = [0, 1, -1] as const;
-const MAX_IMAGE_LENGTH = 6_000_000;
+const MAX_IMAGE_LENGTH = 8_000_000;
 const MAX_LISTINGS_PER_USER = 10;
-const MAX_PRICE = 49.99;
+export const MAX_PRICE = 5;
+
+const CREATE_LISTING_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const CREATE_LISTING_RATE_LIMIT_MAX_ATTEMPTS = 10;
 
 async function requireUser() {
   const user = await getSessionUser();
@@ -47,6 +52,12 @@ type ListingRow = {
   model: string;
   tags: string[];
   username: string;
+  user_id: string;
+  avatar_url: string | null;
+  avg_rating: number;
+  review_count: number;
+  status: string;
+  view_count: number;
 };
 
 function toPrompt(row: ListingRow, index: number): Prompt {
@@ -57,23 +68,37 @@ function toPrompt(row: ListingRow, index: number): Prompt {
     body: row.body,
     image: row.image,
     creator: row.username,
-    creatorEmoji: "🆕",
+    creatorEmoji: row.username.charAt(0).toUpperCase(),
+    creatorAvatarUrl: row.avatar_url,
+    userId: row.user_id,
     price: Number(row.price),
-    rating: 4.5,
-    reviews: 0,
+    rating: row.avg_rating,
+    reviews: row.review_count,
     category: row.category,
     model: row.model as Prompt["model"],
     tags: row.tags,
+    status: row.status,
+    viewCount: row.view_count,
     shadow: SHADOWS[index % SHADOWS.length],
     rotate: ROTATIONS[index % ROTATIONS.length],
   };
 }
 
+const AVG_RATING_CTE = `
+  avg_r AS (
+    SELECT listing_id, AVG(rating) AS avg_rating, COUNT(*) AS review_count
+    FROM reviews GROUP BY listing_id
+  )
+`;
+
 const LISTING_COLUMNS = `
   prompt_listings.id, prompt_listings.title, prompt_listings.description,
   prompt_listings.body, prompt_listings.image, prompt_listings.price::text,
   prompt_listings.category, prompt_listings.model, prompt_listings.tags,
-  users.username
+  prompt_listings.user_id, prompt_listings.status, prompt_listings.view_count,
+  users.username, users.avatar_url,
+  COALESCE(avg_r.avg_rating, 0)::float AS avg_rating,
+  COALESCE(avg_r.review_count, 0)::int AS review_count
 `;
 
 export const listListings = createServerFn({ method: "GET" })
@@ -148,9 +173,7 @@ export const listListings = createServerFn({ method: "GET" })
     const limit = data.limit;
 
     const result = await db.query<ListingRow>(
-      `WITH avg_r AS (
-         SELECT listing_id, AVG(rating) AS avg_rating FROM reviews GROUP BY listing_id
-       )
+      `WITH ${AVG_RATING_CTE}
        SELECT ${LISTING_COLUMNS}
        FROM prompt_listings
        JOIN users ON users.id = prompt_listings.user_id
@@ -169,10 +192,12 @@ export const getListing = createServerFn({ method: "GET" })
   .handler(async ({ data }): Promise<Prompt | null> => {
     const db = getDb();
     const result = await db.query<ListingRow>(
-      `SELECT ${LISTING_COLUMNS}
+      `WITH ${AVG_RATING_CTE}
+       SELECT ${LISTING_COLUMNS}
        FROM prompt_listings
        JOIN users ON users.id = prompt_listings.user_id
-       WHERE prompt_listings.id = $1 AND prompt_listings.status != 'removed'`,
+       LEFT JOIN avg_r ON avg_r.listing_id = prompt_listings.id
+       WHERE prompt_listings.id = $1`,
       [data.id]
     );
 
@@ -191,7 +216,7 @@ export const createListing = createServerFn({ method: "POST" })
         .min(1, "An image is required.")
         .max(MAX_IMAGE_LENGTH, "That image is too large.")
         .startsWith("data:image/", "Upload a valid image file."),
-      price: z.number().min(0).max(MAX_PRICE),
+      price: z.number().int().min(0).max(MAX_PRICE),
       category: z.string().min(1),
       model: z.enum(MODEL_VALUES),
       tags: z.array(z.string().min(1).max(24)).max(6),
@@ -201,6 +226,7 @@ export const createListing = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const user = await requireUser();
+    checkRateLimit(`create-listing:${user.id}`, CREATE_LISTING_RATE_LIMIT_MAX_ATTEMPTS, CREATE_LISTING_RATE_LIMIT_WINDOW_MS);
     const db = getDb();
 
     // Check listing cap. Drafts intentionally count toward this cap too —
@@ -230,6 +256,7 @@ export const createListing = createServerFn({ method: "POST" })
       const clean = sanitize(t);
       return clean.startsWith("#") ? clean.toUpperCase() : `#${clean.toUpperCase()}`;
     });
+    const image = await validateAndNormalizeImage(data.image);
 
     const result = await db.query<{ id: string }>(
       `INSERT INTO prompt_listings (user_id, title, description, body, image, price, category, model, tags, is_nsfw, status)
@@ -240,7 +267,7 @@ export const createListing = createServerFn({ method: "POST" })
         title,
         description,
         body,
-        data.image,
+        image,
         data.price,
         sanitize(data.category),
         data.model,
@@ -326,6 +353,41 @@ export const deleteListing = createServerFn({ method: "POST" })
     return { ok: true as const };
   });
 
+export const setListingVisibility = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ id: z.string().uuid(), hidden: z.boolean() }))
+  .handler(async ({ data }) => {
+    const user = await requireUser();
+    const db = getDb();
+
+    const listing = await db.query<{ user_id: string; status: string }>(
+      "SELECT user_id, status FROM prompt_listings WHERE id = $1",
+      [data.id]
+    );
+
+    if (listing.rows.length === 0) {
+      throw new Error("Listing not found.");
+    }
+
+    if (listing.rows[0].user_id !== user.id && !user.is_admin) {
+      throw new Error("You can only manage your own listings.");
+    }
+
+    const currentStatus = listing.rows[0].status;
+    if (data.hidden) {
+      if (currentStatus !== "published") {
+        throw new Error("Only published prompts can be hidden.");
+      }
+      await db.query("UPDATE prompt_listings SET status = 'hidden' WHERE id = $1", [data.id]);
+    } else {
+      if (currentStatus !== "hidden") {
+        throw new Error("Only hidden prompts can be unhidden.");
+      }
+      await db.query("UPDATE prompt_listings SET status = 'published' WHERE id = $1", [data.id]);
+    }
+
+    return { ok: true as const };
+  });
+
 export const updateListing = createServerFn({ method: "POST" })
   .inputValidator(
     z.object({
@@ -333,7 +395,7 @@ export const updateListing = createServerFn({ method: "POST" })
       title: z.string().min(2).max(80).optional(),
       description: z.string().min(10).max(280).optional(),
       body: z.string().min(10).max(2000).optional(),
-      price: z.number().min(0).max(MAX_PRICE).optional(),
+      price: z.number().int().min(0).max(MAX_PRICE).optional(),
       category: z.string().optional(),
       model: z.enum(MODEL_VALUES).optional(),
       tags: z.array(z.string().min(1).max(24)).max(6).optional(),

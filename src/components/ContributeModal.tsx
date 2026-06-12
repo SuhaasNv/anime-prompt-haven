@@ -3,11 +3,14 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "@tanstack/react-router";
 
 import { createListing, listListings } from "@/lib/api/listings.functions";
+import { getListingAssistance, generateTitleFromImage, generateDescriptionFromImage } from "@/lib/api/ai.functions";
 import { getCurrentUser } from "@/lib/api/auth.functions";
 import { CATEGORIES, MODELS } from "@/lib/mock-data";
 
 const LISTING_CATEGORIES = CATEGORIES.filter((c) => c !== "All");
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
+const MIN_IMAGE_WIDTH = 480;
+const MIN_IMAGE_HEIGHT = 360;
 
 interface ContributeModalProps {
   open: boolean;
@@ -34,6 +37,14 @@ export function ContributeModal({ open, onClose }: ContributeModalProps) {
   const [user, setUser] = useState<{ id: string; username: string } | null>(null);
   const [loadingListings, setLoadingListings] = useState(false);
   const [checkingImage, setCheckingImage] = useState(false);
+  const [gettingAssistance, setGettingAssistance] = useState(false);
+  const [generatingTitle, setGeneratingTitle] = useState(false);
+  const [generatingDescription, setGeneratingDescription] = useState(false);
+  const [suggestions, setSuggestions] = useState<{
+    suggestedTags: string[];
+    suggestedPrice: number;
+    polishedDescription: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -49,7 +60,7 @@ export function ContributeModal({ open, onClose }: ContributeModalProps) {
           setActiveListingCount(listings.length);
         }
       } catch (err) {
-        console.error("Failed to load user data", err);
+        // Silently fail - error is handled by showing no user-specific limits
       } finally {
         setLoadingListings(false);
       }
@@ -118,6 +129,15 @@ export function ContributeModal({ open, onClose }: ContributeModalProps) {
     });
   };
 
+  const getImageDimensions = (dataUrl: string): Promise<{ width: number; height: number }> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+      img.onerror = () => reject(new Error("Couldn't read that image — try a different file."));
+      img.src = dataUrl;
+    });
+  };
+
   const handleClose = () => {
     if (submitting) return;
     reset();
@@ -146,6 +166,25 @@ export function ContributeModal({ open, onClose }: ContributeModalProps) {
     const reader = new FileReader();
     reader.onload = async () => {
       if (typeof reader.result === "string") {
+        try {
+          const { width, height } = await getImageDimensions(reader.result);
+          if (width < MIN_IMAGE_WIDTH || height < MIN_IMAGE_HEIGHT) {
+            setCheckingImage(false);
+            setError(`Image is too small — please upload at least ${MIN_IMAGE_WIDTH}x${MIN_IMAGE_HEIGHT}px.`);
+            e.target.value = "";
+            setImageDataUrl(null);
+            setImageName(null);
+            return;
+          }
+        } catch (err) {
+          setCheckingImage(false);
+          setError(err instanceof Error ? err.message : "Couldn't read that image — try a different file.");
+          e.target.value = "";
+          setImageDataUrl(null);
+          setImageName(null);
+          return;
+        }
+
         const isNsfw = await checkImageForNSFW(reader.result);
         setCheckingImage(false);
         if (isNsfw) {
@@ -161,6 +200,95 @@ export function ContributeModal({ open, onClose }: ContributeModalProps) {
       }
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleGetAssistance = async () => {
+    setError(null);
+    setGettingAssistance(true);
+    try {
+      if (!title || title.length < 2) {
+        setError("Title is required (at least 2 characters) to get suggestions.");
+        return;
+      }
+      if (!description || description.length < 10) {
+        setError("Description is required (at least 10 characters) to get suggestions.");
+        return;
+      }
+      if (!body || body.length < 10) {
+        setError("Prompt body is required (at least 10 characters) to get suggestions.");
+        return;
+      }
+
+      const result = await getListingAssistance({
+        data: { title, description, body, category },
+      });
+
+      if (result.ok && result.data) {
+        setSuggestions({
+          suggestedTags: result.data.suggestedTags,
+          suggestedPrice: result.data.suggestedPrice,
+          polishedDescription: result.data.polishedDescription,
+        });
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't get suggestions. Try again.");
+    } finally {
+      setGettingAssistance(false);
+    }
+  };
+
+  const applySuggestions = () => {
+    if (!suggestions) return;
+    setTagsInput(suggestions.suggestedTags.join(", "));
+    setPrice(String(suggestions.suggestedPrice));
+    setSuggestions(null);
+  };
+
+  const rejectSuggestions = () => {
+    setSuggestions(null);
+    setError(null);
+  };
+
+  const handleGenerateTitle = async () => {
+    if (!imageDataUrl) {
+      setError("Please upload an image first to generate a title.");
+      return;
+    }
+    setError(null);
+    setGeneratingTitle(true);
+    try {
+      const result = await generateTitleFromImage({
+        data: { imageDataUrl },
+      });
+      if (result.ok && result.data?.title) {
+        setTitle(result.data.title);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to generate title");
+    } finally {
+      setGeneratingTitle(false);
+    }
+  };
+
+  const handleGenerateDescription = async () => {
+    if (!imageDataUrl) {
+      setError("Please upload an image first to generate a description.");
+      return;
+    }
+    setError(null);
+    setGeneratingDescription(true);
+    try {
+      const result = await generateDescriptionFromImage({
+        data: { imageDataUrl },
+      });
+      if (result.ok && result.data?.description) {
+        setDescription(result.data.description);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to generate description");
+    } finally {
+      setGeneratingDescription(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -250,6 +378,7 @@ export function ContributeModal({ open, onClose }: ContributeModalProps) {
               <div>
                 <label className="text-xs font-bold uppercase tracking-widest block mb-1">
                   Cover image <span className="text-magenta">*</span>
+                  <span className="text-ink/40 normal-case font-normal tracking-normal"> — at least {MIN_IMAGE_WIDTH}x{MIN_IMAGE_HEIGHT}px, under 4MB</span>
                 </label>
                 <input
                   ref={fileInputRef}
@@ -281,30 +410,52 @@ export function ContributeModal({ open, onClose }: ContributeModalProps) {
 
               <div>
                 <label className="text-xs font-bold uppercase tracking-widest block mb-1">Title</label>
-                <input
-                  type="text"
-                  required
-                  minLength={2}
-                  maxLength={80}
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="Golden Hour Product Shot"
-                  className="w-full bg-white border-2 border-ink p-2 font-bold text-sm focus:outline-none focus:ring-4 focus:ring-magenta/30"
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    required
+                    minLength={2}
+                    maxLength={80}
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="Golden Hour Product Shot"
+                    className="w-full bg-white border-2 border-ink p-2 pr-10 font-bold text-sm focus:outline-none focus:ring-4 focus:ring-magenta/30"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleGenerateTitle}
+                    disabled={generatingTitle || !imageDataUrl}
+                    title="Generate title from image"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-magenta text-xl hover:scale-125 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    ✨
+                  </button>
+                </div>
               </div>
 
               <div>
                 <label className="text-xs font-bold uppercase tracking-widest block mb-1">Description</label>
-                <textarea
-                  required
-                  minLength={10}
-                  maxLength={280}
-                  rows={2}
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Studio product photography with soft golden-hour lighting and a glossy reflective surface."
-                  className="w-full bg-white border-2 border-ink p-2 font-medium text-sm focus:outline-none focus:ring-4 focus:ring-magenta/30"
-                />
+                <div className="relative">
+                  <textarea
+                    required
+                    minLength={10}
+                    maxLength={280}
+                    rows={2}
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Studio product photography with soft golden-hour lighting and a glossy reflective surface."
+                    className="w-full bg-white border-2 border-ink p-2 pr-10 font-medium text-sm focus:outline-none focus:ring-4 focus:ring-magenta/30 resize-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleGenerateDescription}
+                    disabled={generatingDescription || !imageDataUrl}
+                    title="Generate description from image"
+                    className="absolute right-2 bottom-2 text-magenta text-xl hover:scale-125 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    ✨
+                  </button>
+                </div>
               </div>
 
               <div>
@@ -321,15 +472,72 @@ export function ContributeModal({ open, onClose }: ContributeModalProps) {
                 />
               </div>
 
+              {/* AI Assistance Button */}
+              <button
+                type="button"
+                onClick={handleGetAssistance}
+                disabled={gettingAssistance || !title || !description || !body}
+                className="w-full bg-holo-purple text-white py-2 font-display uppercase border-2 border-ink shadow-[2px_2px_0_0_#0a0a0c] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+              >
+                {gettingAssistance ? "✨ Getting suggestions…" : "✨ Get AI Suggestions"}
+              </button>
+
+              {/* Suggestions Display */}
+              {suggestions && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="p-3 border-2 border-holo-purple bg-holo-purple/5 space-y-2"
+                >
+                  <h4 className="font-bold text-xs uppercase text-holo-purple">AI Suggestions</h4>
+
+                  {/* Suggested Price */}
+                  <div className="text-xs">
+                    <span className="font-bold">Price: </span>
+                    <span className="text-holo-purple font-bold">{suggestions.suggestedPrice} ✦</span>
+                  </div>
+
+                  {/* Suggested Tags */}
+                  <div className="text-xs">
+                    <span className="font-bold">Tags: </span>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {suggestions.suggestedTags.map((tag) => (
+                        <span key={tag} className="bg-holo-purple text-white px-2 py-0.5 text-[10px] font-bold uppercase">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={applySuggestions}
+                      className="flex-1 bg-holo-purple text-white py-1 font-bold text-xs uppercase border border-holo-purple hover:bg-holo-purple/80 transition-colors"
+                    >
+                      Apply
+                    </button>
+                    <button
+                      type="button"
+                      onClick={rejectSuggestions}
+                      className="flex-1 bg-white text-holo-purple py-1 font-bold text-xs uppercase border border-holo-purple hover:bg-holo-purple/10 transition-colors"
+                    >
+                      Reject
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-bold uppercase tracking-widest block mb-1">Price (USD)</label>
+                  <label className="text-xs font-bold uppercase tracking-widest block mb-1">Price (Credits)</label>
                   <input
                     type="number"
                     required
                     min={0}
-                    max={49.99}
-                    step="0.01"
+                    max={5}
+                    step="1"
                     value={price}
                     onChange={(e) => setPrice(e.target.value)}
                     className="w-full bg-white border-2 border-ink p-2 font-bold text-sm focus:outline-none focus:ring-4 focus:ring-magenta/30"

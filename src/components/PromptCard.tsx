@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import type { Prompt } from "@/lib/mock-data";
+import { handleImageError } from "@/lib/utils";
 
 const shadowMap = {
   magenta: "shadow-pop-magenta",
@@ -10,7 +11,14 @@ const shadowMap = {
   black: "shadow-pop-lg",
 } as const;
 
-export function PromptCard({ prompt, purchased = false }: { prompt: Prompt; purchased?: boolean }) {
+interface PromptCardProps {
+  prompt: Prompt;
+  purchased?: boolean;
+  currentUserId?: string;
+}
+
+export function PromptCard({ prompt, purchased = false, currentUserId }: PromptCardProps) {
+  const isOwner = !!currentUserId && prompt.userId === currentUserId;
   const rotate = prompt.rotate === 1 ? "rotate-1" : prompt.rotate === -1 ? "-rotate-1" : "";
   return (
     <motion.div
@@ -34,6 +42,7 @@ export function PromptCard({ prompt, purchased = false }: { prompt: Prompt; purc
             width={768}
             height={576}
             className="w-full h-full object-cover"
+            onError={handleImageError}
           />
           <span className="absolute top-2 left-2 bg-ink text-white text-[10px] font-bold uppercase px-2 py-0.5 tracking-widest">
             {prompt.model}
@@ -42,12 +51,16 @@ export function PromptCard({ prompt, purchased = false }: { prompt: Prompt; purc
         <div className="flex justify-between items-start mb-2 gap-2">
           <h3 className="font-bold text-lg leading-tight uppercase">{prompt.title}</h3>
           <span className="bg-accent-yellow px-2 py-1 border-2 border-ink font-display text-xs whitespace-nowrap">
-            {prompt.price === 0 ? "FREE" : `$${prompt.price}`}
+            {prompt.price === 0 ? "FREE" : `${prompt.price} ✦`}
           </span>
         </div>
         <div className="flex items-center gap-2 mb-4">
-          <div className="size-6 rounded-full bg-ink text-white text-xs flex items-center justify-center border border-ink">
-            {prompt.creatorEmoji}
+          <div className="size-6 rounded-full bg-ink text-white text-xs flex items-center justify-center border border-ink overflow-hidden">
+            {prompt.creatorAvatarUrl ? (
+              <img src={prompt.creatorAvatarUrl} alt="" className="size-full object-cover" />
+            ) : (
+              prompt.creatorEmoji
+            )}
           </div>
           <Link
             to="/u/$username"
@@ -58,7 +71,11 @@ export function PromptCard({ prompt, purchased = false }: { prompt: Prompt; purc
           </Link>
           <span className="ml-auto text-xs font-bold text-accent-orange">★ {prompt.rating.toFixed(1)}</span>
         </div>
-        {prompt.price > 0 && purchased ? (
+        {isOwner ? (
+          <div className="w-full bg-holo-purple text-white py-3 font-bold uppercase text-center hover:bg-magenta transition-colors text-sm">
+            Manage Prompt
+          </div>
+        ) : prompt.price > 0 && purchased ? (
           <div className="w-full bg-green-600 text-white py-3 font-bold uppercase text-center text-sm">
             ✓ Already Bought
           </div>

@@ -1,7 +1,10 @@
 import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Navbar } from "@/components/Navbar";
-import { CURRENT_USER_QUERY_KEY, getCurrentUser, setMascot, updateBio } from "@/lib/api/auth.functions";
+import { AvatarCropModal } from "@/components/AvatarCropModal";
+import { confirm } from "@/components/ui/confirm-dialog";
+import { CURRENT_USER_QUERY_KEY, getCurrentUser, removeAvatar, setMascot, updateAvatar, updateBio } from "@/lib/api/auth.functions";
 import { MASCOTS, type MascotKey } from "@/lib/mascots";
 import { ACCENT_THEMES, applyAccentTheme, getStoredAccentTheme, persistAccentTheme, type AccentTheme } from "@/lib/theme";
 import { playTactileClick } from "@/lib/sound";
@@ -37,6 +40,7 @@ const animationLevels = ["Off", "Low", "High"] as const;
 
 function ProfilePage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { user } = Route.useLoaderData();
   // Starts at the SSR-safe default; localStorage only exists client-side, so
   // reading it during the initial render would mismatch the server-rendered
@@ -60,6 +64,11 @@ function ProfilePage() {
   const [savingBio, setSavingBio] = useState(false);
   const [companion, setCompanion] = useState<MascotKey>(user.mascot);
   const [savingCompanion, setSavingCompanion] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(user.avatarUrl);
+  const [savingAvatar, setSavingAvatar] = useState(false);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
+  const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
+  const [cropError, setCropError] = useState<string | null>(null);
   const [stats, setStats] = useState<GamificationStats>({ listingsCount: 0, salesCount: 0, savesReceived: 0, reviewsWritten: 0 });
 
   useEffect(() => {
@@ -111,6 +120,61 @@ function ProfilePage() {
     }
   };
 
+  // Step 1: pick a file — open the crop modal so the user can position it
+  // before anything is uploaded.
+  const handleAvatarFile = (file: File) => {
+    setAvatarError(null);
+    setCropError(null);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const imageDataUrl = reader.result;
+      if (typeof imageDataUrl !== "string") return;
+      setCropImageSrc(imageDataUrl);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Step 2: user positions the photo and hits Save in the crop modal.
+  const handleConfirmCrop = async (croppedDataUrl: string) => {
+    setCropError(null);
+    setSavingAvatar(true);
+    try {
+      const result = await updateAvatar({ data: { imageDataUrl: croppedDataUrl } });
+      setAvatarUrl(result.avatarUrl);
+      setCropImageSrc(null);
+      await queryClient.invalidateQueries({ queryKey: CURRENT_USER_QUERY_KEY });
+      await router.invalidate();
+    } catch (err) {
+      setCropError(err instanceof Error ? err.message : "Failed to upload avatar.");
+    } finally {
+      setSavingAvatar(false);
+    }
+  };
+
+  // Two-step removal: confirm, then clear the avatar.
+  const handleRemoveAvatar = async () => {
+    const confirmed = await confirm({
+      title: "Remove your photo?",
+      description: "Your profile picture will be removed and replaced with your companion icon.",
+      confirmText: "Remove",
+      destructive: true,
+    });
+    if (!confirmed) return;
+
+    setAvatarError(null);
+    setSavingAvatar(true);
+    try {
+      await removeAvatar();
+      setAvatarUrl(null);
+      await queryClient.invalidateQueries({ queryKey: CURRENT_USER_QUERY_KEY });
+      await router.invalidate();
+    } catch (err) {
+      setAvatarError(err instanceof Error ? err.message : "Failed to remove avatar.");
+    } finally {
+      setSavingAvatar(false);
+    }
+  };
+
   return (
     <div className="min-h-screen">
       <Navbar />
@@ -130,7 +194,38 @@ function ProfilePage() {
                 const badges = computeBadges(stats);
                 return (
               <div className="flex flex-col items-center text-center">
-                <img src={MASCOTS[companion].image} alt="Avatar" width={120} height={120} className="size-28 border-4 border-ink rounded-full bg-accent-yellow object-contain" />
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="Avatar" width={120} height={120} className="size-28 border-4 border-ink rounded-full object-cover" />
+                ) : (
+                  <img src={MASCOTS[companion].image} alt="Avatar" width={120} height={120} className="size-28 border-4 border-ink rounded-full bg-accent-yellow object-contain" />
+                )}
+                <div className="flex items-center gap-2 mt-2">
+                  <label className="cursor-pointer px-3 py-1 bg-magenta text-white font-bold uppercase text-[10px] border-2 border-ink shadow-[2px_2px_0_0_#0a0a0c] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all">
+                    {savingAvatar ? "Saving…" : avatarUrl ? "Change Photo" : "Upload Photo"}
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      className="hidden"
+                      disabled={savingAvatar}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleAvatarFile(file);
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
+                  {avatarUrl && (
+                    <button
+                      type="button"
+                      onClick={handleRemoveAvatar}
+                      disabled={savingAvatar}
+                      className="px-3 py-1 bg-white text-ink font-bold uppercase text-[10px] border-2 border-ink hover:bg-ink hover:text-white transition-colors disabled:opacity-50"
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+                {avatarError && <p className="text-[10px] text-magenta font-bold mt-1">{avatarError}</p>}
                 <h2 className="font-display text-2xl uppercase mt-3">@{user.username}</h2>
                 <div className="flex items-center gap-2 mt-1">
                   <span className="px-2 py-1 bg-accent-yellow border-2 border-ink text-[10px] font-bold uppercase">Lv. {level}</span>
@@ -285,6 +380,18 @@ function ProfilePage() {
           </div>
         </div>
       </main>
+      {cropImageSrc && (
+        <AvatarCropModal
+          imageSrc={cropImageSrc}
+          saving={savingAvatar}
+          error={cropError}
+          onCancel={() => {
+            setCropImageSrc(null);
+            setCropError(null);
+          }}
+          onConfirm={handleConfirmCrop}
+        />
+      )}
     </div>
   );
 }

@@ -93,10 +93,10 @@ export function CreditsModal({ open, onClose, onBalanceChange }: CreditsModalPro
             <h3 className="text-xs font-bold uppercase tracking-widest text-ink/60 mb-3 border-b-2 border-ink/10 pb-1">How You Earn</h3>
             <ul className="space-y-2">
               {[
-                { icon: "🎁", label: "Welcome bonus", amount: "+5.00 on sign up" },
-                { icon: "📤", label: "Publish a prompt", amount: "+2.00 per listing" },
-                { icon: "📋", label: "Someone copies your prompt", amount: "+0.07 per copy" },
-                { icon: "💎", label: "Someone buys your prompt", amount: "70% of sale price" },
+                { icon: "🎁", label: "Welcome bonus", amount: "+5 on sign up" },
+                { icon: "📤", label: "Publish a prompt", amount: "+2 per listing" },
+                { icon: "📋", label: "Someone copies your prompt", amount: "+1 per copy" },
+                { icon: "💎", label: "Someone buys your prompt", amount: "70% of sale credits" },
               ].map((row) => (
                 <li key={row.label} className="flex items-center justify-between text-sm">
                   <span className="flex items-center gap-2">
@@ -117,7 +117,7 @@ export function CreditsModal({ open, onClose, onBalanceChange }: CreditsModalPro
               disabled={toppingUp}
               className="w-full bg-accent-orange text-white py-3 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all disabled:opacity-50"
             >
-              {toppingUp ? "Topping up…" : "✦ Demo Top-Up (+50.00)"}
+              {toppingUp ? "Topping up…" : "✦ Demo Top-Up (+100)"}
             </button>
             <p className="text-[10px] text-ink/40 text-center mt-1 font-mono uppercase">Stripe integration coming soon</p>
           </div>

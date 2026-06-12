@@ -13,6 +13,10 @@ export type Prompt = {
   image: string;
   creator: string;
   creatorEmoji: string;
+  creatorAvatarUrl?: string | null;
+  userId?: string;
+  status?: string;
+  viewCount?: number;
   price: number; // 0 = free
   rating: number;
   reviews: number;

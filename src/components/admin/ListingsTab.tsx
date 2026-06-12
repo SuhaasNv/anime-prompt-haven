@@ -120,7 +120,7 @@ export function ListingsTab({
                     </span>
                   </div>
                   <p className="text-xs text-ink/60">
-                    By @{listing.username} · ✦{listing.price.toFixed(2)}
+                    By @{listing.username} · ✦{listing.price}
                   </p>
                   <p className="text-xs text-ink/60 font-mono mt-1">ID: {listing.id.slice(0, 8)}</p>
                 </div>

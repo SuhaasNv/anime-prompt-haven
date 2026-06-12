@@ -6,9 +6,11 @@ import { createSession, destroySession, getSessionUser } from "../auth.server";
 import { getDb } from "../db.server";
 import { checkRateLimit } from "../rate-limit.server";
 import { sanitize } from "../sanitize";
+import { validateAndNormalizeAvatar } from "../image-validation.server";
 
 const PASSWORD_MIN_LENGTH = 8;
 const MASCOT_VALUES = ["nova", "comet"] as const;
+const MAX_AVATAR_IMAGE_LENGTH = 4_000_000;
 
 const SIGNIN_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 const SIGNIN_RATE_LIMIT_MAX_ATTEMPTS = 10;
@@ -132,6 +134,7 @@ export interface UserProfile {
   username: string;
   bio: string | null;
   mascot: "nova" | "comet";
+  avatarUrl: string | null;
   createdAt: string;
   listingsCount: number;
   salesCount: number;
@@ -147,13 +150,14 @@ export const getUserProfile = createServerFn({ method: "GET" })
       username: string;
       bio: string | null;
       mascot: "nova" | "comet";
+      avatar_url: string | null;
       created_at: string;
       listings_count: string;
       sales_count: string;
       saves_received: string;
     }>(
       `SELECT
-         u.id, u.username, u.bio, u.mascot, u.created_at,
+         u.id, u.username, u.bio, u.mascot, u.avatar_url, u.created_at,
          (SELECT COUNT(*) FROM prompt_listings WHERE user_id = u.id AND status = 'published') AS listings_count,
          (SELECT COUNT(*) FROM purchases p JOIN prompt_listings pl ON pl.id = p.listing_id WHERE pl.user_id = u.id) AS sales_count,
          (SELECT COALESCE(SUM(save_count), 0) FROM prompt_listings WHERE user_id = u.id AND status = 'published') AS saves_received
@@ -170,6 +174,7 @@ export const getUserProfile = createServerFn({ method: "GET" })
       username: row.username,
       bio: row.bio,
       mascot: row.mascot,
+      avatarUrl: row.avatar_url,
       createdAt: row.created_at,
       listingsCount: parseInt(row.listings_count, 10),
       salesCount: parseInt(row.sales_count, 10),
@@ -186,3 +191,30 @@ export const updateBio = createServerFn({ method: "POST" })
     await db.query("UPDATE users SET bio = $1 WHERE id = $2", [sanitize(data.bio), user.id]);
     return { ok: true as const };
   });
+
+export const updateAvatar = createServerFn({ method: "POST" })
+  .inputValidator(
+    z.object({
+      imageDataUrl: z
+        .string()
+        .min(1, "An image is required.")
+        .max(MAX_AVATAR_IMAGE_LENGTH, "That image is too large.")
+        .startsWith("data:image/", "Upload a valid image file."),
+    }),
+  )
+  .handler(async ({ data }) => {
+    const user = await getSessionUser();
+    if (!user) throw new Error("You must be signed in.");
+
+    const avatarUrl = await validateAndNormalizeAvatar(data.imageDataUrl);
+    await getDb().query("UPDATE users SET avatar_url = $1 WHERE id = $2", [avatarUrl, user.id]);
+    return { ok: true as const, avatarUrl };
+  });
+
+export const removeAvatar = createServerFn({ method: "POST" }).handler(async () => {
+  const user = await getSessionUser();
+  if (!user) throw new Error("You must be signed in.");
+
+  await getDb().query("UPDATE users SET avatar_url = NULL WHERE id = $1", [user.id]);
+  return { ok: true as const };
+});

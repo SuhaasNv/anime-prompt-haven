@@ -1,4 +1,5 @@
 import { createFileRoute, Link, notFound, redirect, useRouter } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Navbar } from "@/components/Navbar";
@@ -13,8 +14,8 @@ import {
   getPublicCollection,
   toggleCollectionVisibility,
 } from "@/lib/api/collections.functions";
-import { getListing } from "@/lib/api/listings.functions";
-import { getPrompt, PROMPTS, type Prompt } from "@/lib/mock-data";
+import { getListing, listListings } from "@/lib/api/listings.functions";
+import { getPrompt, type Prompt } from "@/lib/mock-data";
 
 // Helper to resolve a prompt ID to a full Prompt object
 // Checks if it's a UUID (DB listing) or slug (mock data)
@@ -161,7 +162,11 @@ function AddPromptPicker({
   const router = useRouter();
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const available = PROMPTS.filter((p) => !savedIds.includes(p.id));
+  const { data: listings = [], isLoading } = useQuery({
+    queryKey: ["listings", "all"],
+    queryFn: () => listListings({ data: { limit: 100, offset: 0, sort: "newest" } }),
+  });
+  const available = listings.filter((p) => !savedIds.includes(p.id));
 
   const handleAdd = async (promptId: string) => {
     setError(null);
@@ -185,7 +190,9 @@ function AddPromptPicker({
         </button>
       </div>
       {error && <p className="text-xs font-bold text-magenta mb-3">{error}</p>}
-      {available.length === 0 ? (
+      {isLoading ? (
+        <p className="text-sm text-ink/60">Loading prompts…</p>
+      ) : available.length === 0 ? (
         <p className="text-sm text-ink/60">Every prompt is already saved here.</p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -381,44 +388,69 @@ function CollectionDetail() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {prompts.map((p) => (
-              <div
-                key={p.id}
-                className="relative bg-white border-2 border-ink hover:shadow-pop transition-all"
-              >
-                <Link to="/prompt/$id" params={{ id: p.id }} className="block p-4">
-                  <div className="flex gap-4">
-                    <img
-                      src={p.image}
-                      alt={p.title}
-                      loading="lazy"
-                      className="size-24 object-cover border-2 border-ink shrink-0"
-                    />
-                    <div className="min-w-0 flex-1 pr-6">
-                      <h3 className="font-bold uppercase truncate">{p.title}</h3>
-                      <p className="text-xs text-ink/60 mt-1 line-clamp-2">{p.description}</p>
-                      <div className="flex items-center gap-2 mt-2">
-                        <span className="text-xs font-bold uppercase">@{p.creator}</span>
-                        <span className="text-xs text-accent-orange font-bold">★ {p.rating}</span>
+            {prompts.map((p) => {
+              const isUnavailable = !!p.status && p.status !== "published";
+
+              return (
+                <div
+                  key={p.id}
+                  className={`relative bg-white border-2 border-ink transition-all duration-300 ${
+                    removing === p.id ? "opacity-40 scale-[0.98]" : "opacity-100 hover:shadow-pop"
+                  }`}
+                >
+                  {isUnavailable ? (
+                    <div className="flex gap-4 p-4">
+                      <div className="size-24 flex items-center justify-center bg-ink/5 border-2 border-dashed border-ink/20 shrink-0 text-3xl">
+                        👻
+                      </div>
+                      <div className="min-w-0 flex-1 pr-6">
+                        <h3 className="font-bold uppercase truncate text-ink/40 line-through">{p.title}</h3>
+                        <p className="text-xs text-ink/60 mt-1">
+                          {p.status === "hidden"
+                            ? "The creator has temporarily hidden this prompt."
+                            : "The creator has removed this prompt."}
+                        </p>
+                        <div className="mt-3 pt-3 border-t-2 border-dashed border-ink/20">
+                          <span className="text-xs font-mono uppercase text-ink/40">No longer available</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  <div className="mt-3 pt-3 border-t-2 border-dashed border-ink/20">
-                    <span className="text-xs font-mono uppercase text-ink/60">Saved to binder</span>
-                  </div>
-                </Link>
-                {isOwner && (
-                  <button
-                    onClick={() => handleRemovePrompt(p.id)}
-                    disabled={removing === p.id}
-                    title="Remove from collection"
-                    className="absolute top-3 right-3 size-7 flex items-center justify-center bg-white border-2 border-ink text-magenta font-bold text-xs hover:bg-magenta hover:text-white transition-colors disabled:opacity-50"
-                  >
-                    {removing === p.id ? "…" : "✕"}
-                  </button>
-                )}
-              </div>
-            ))}
+                  ) : (
+                    <Link to="/prompt/$id" params={{ id: p.id }} className="block p-4">
+                      <div className="flex gap-4">
+                        <img
+                          src={p.image}
+                          alt={p.title}
+                          loading="lazy"
+                          className="size-24 object-cover border-2 border-ink shrink-0"
+                        />
+                        <div className="min-w-0 flex-1 pr-6">
+                          <h3 className="font-bold uppercase truncate">{p.title}</h3>
+                          <p className="text-xs text-ink/60 mt-1 line-clamp-2">{p.description}</p>
+                          <div className="flex items-center gap-2 mt-2">
+                            <span className="text-xs font-bold uppercase">@{p.creator}</span>
+                            <span className="text-xs text-accent-orange font-bold">★ {p.rating}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mt-3 pt-3 border-t-2 border-dashed border-ink/20">
+                        <span className="text-xs font-mono uppercase text-ink/60">Saved to binder</span>
+                      </div>
+                    </Link>
+                  )}
+                  {isOwner && (
+                    <button
+                      onClick={() => handleRemovePrompt(p.id)}
+                      disabled={removing === p.id}
+                      title="Remove from collection"
+                      className="absolute top-3 right-3 size-7 flex items-center justify-center bg-white border-2 border-ink text-magenta font-bold text-xs hover:bg-magenta hover:text-white transition-colors disabled:opacity-50"
+                    >
+                      {removing === p.id ? "…" : "✕"}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </main>

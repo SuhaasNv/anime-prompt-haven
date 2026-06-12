@@ -1,6 +1,6 @@
 import { createFileRoute, Link, notFound, useRouter } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState, type ClipboardEvent } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { Navbar } from "@/components/Navbar";
@@ -13,10 +13,13 @@ import {
   incrementViewCount,
   deleteListing,
   updateListing,
+  MAX_PRICE,
 } from "@/lib/api/listings.functions";
 import { getPrompt, PROMPTS, type Prompt } from "@/lib/mock-data";
-import { getCurrentUser } from "@/lib/api/auth.functions";
+import { handleImageError } from "@/lib/utils";
+import { CURRENT_USER_QUERY_KEY, getCurrentUser } from "@/lib/api/auth.functions";
 import { isSaved, savePrompt, unsavePrompt } from "@/lib/api/saves.functions";
+import { listCollections } from "@/lib/api/collections.functions";
 import { hasPurchased } from "@/lib/api/purchases.functions";
 import {
   listReviews,
@@ -24,6 +27,7 @@ import {
   hasUserReviewed,
   createReview,
   deleteReview,
+  replyToReview,
 } from "@/lib/api/reviews.functions";
 import { CREDITS_QUERY_KEY, getMyCredits } from "@/lib/api/credits.functions";
 import { recordCopy } from "@/lib/api/copies.functions";
@@ -31,12 +35,34 @@ import { recordCopy } from "@/lib/api/copies.functions";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const Route = createFileRoute("/prompt/$id")({
-  loader: async ({ params }) => {
+  loader: async ({ params, context }) => {
     // Validate UUID format early to show 404 instead of generic error for malformed IDs
     if (!UUID_RE.test(params.id)) throw notFound();
 
     const prompt = getPrompt(params.id) ?? (await getListing({ data: { id: params.id } }));
     if (!prompt) throw notFound();
+
+    // Prefetch the session into the shared QueryClient so the "Manage Prompt"
+    // vs "Buy" decision below is correct on first render — avoids a flash of
+    // the signed-out/buyer state while a client-side fetch resolves.
+    const user = await context.queryClient.ensureQueryData({
+      queryKey: CURRENT_USER_QUERY_KEY,
+      queryFn: getCurrentUser,
+      staleTime: 60_000,
+    });
+
+    // Removed/hidden listings are only viewable by their creator or an admin —
+    // everyone else gets the same 404 as a deleted prompt. Exception: buyers
+    // who already purchased a now-hidden listing keep access to what they paid for.
+    if (prompt.status && prompt.status !== "published") {
+      let canView = !!user && (user.id === prompt.userId || user.is_admin);
+      if (!canView && user && prompt.status === "hidden") {
+        const purchased = await hasPurchased({ data: { listingId: prompt.id } });
+        canView = purchased.purchased;
+      }
+      if (!canView) throw notFound();
+    }
+
     return { prompt };
   },
   head: ({ loaderData }) =>
@@ -72,6 +98,8 @@ interface Review {
   rating: number;
   body: string;
   createdAt: string;
+  creatorReply: string | null;
+  creatorReplyAt: string | null;
 }
 
 function PromptDetail() {
@@ -81,11 +109,22 @@ function PromptDetail() {
   const [modalOpen, setModalOpen] = useState(false);
   const [reportModalOpen, setReportModalOpen] = useState(false);
   const [purchaseModalOpen, setPurchaseModalOpen] = useState(false);
+  const [manageModalOpen, setManageModalOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [saved, setSaved] = useState(false);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [avgRating, setAvgRating] = useState<number | null>(null);
-  const [currentUser, setCurrentUser] = useState<{ id: string; username: string } | null>(null);
+  const { data: currentUser } = useQuery({
+    queryKey: CURRENT_USER_QUERY_KEY,
+    queryFn: getCurrentUser,
+    staleTime: 60_000,
+  });
+  const { data: collections = [] } = useQuery({
+    queryKey: ["collections"],
+    queryFn: listCollections,
+    enabled: !!currentUser,
+  });
+  const inAnyCollection = collections.some((c) => c.promptIds.includes(prompt.id));
   const [userCredits, setUserCredits] = useState(0);
   const [hasOwnedListing, setHasOwnedListing] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -93,7 +132,7 @@ function PromptDetail() {
   const [editTitle, setEditTitle] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editBody, setEditBody] = useState("");
-  const [editPrice, setEditPrice] = useState(0);
+  const [editPrice, setEditPrice] = useState("0");
   const [saving, setSaving] = useState(false);
   const [hasAlreadyReviewed, setHasAlreadyReviewed] = useState(false);
   const [reviewRating, setReviewRating] = useState(5);
@@ -102,6 +141,9 @@ function PromptDetail() {
   const [isEditingReview, setIsEditingReview] = useState(false);
   const [deletingReview, setDeletingReview] = useState(false);
   const [confirmingDeleteReview, setConfirmingDeleteReview] = useState(false);
+  const [replyingUserId, setReplyingUserId] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState("");
+  const [submittingReply, setSubmittingReply] = useState(false);
 
   const related = PROMPTS.filter((p) => p.id !== prompt.id).slice(0, 3);
 
@@ -119,30 +161,6 @@ function PromptDetail() {
         ]);
         setReviews(reviewsList as Review[]);
         setAvgRating(rating.average);
-
-        // Load user data
-        const user = await getCurrentUser();
-        setCurrentUser(user);
-
-        if (user) {
-          // Check if user has saved this listing
-          const savedData = await isSaved({ data: { listingId: prompt.id } });
-          setSaved(savedData.saved);
-
-          // Load user credits
-          const credits = await getMyCredits();
-          setUserCredits(credits.balance);
-
-          // Check if user has purchased
-          const purchased = await hasPurchased({ data: { listingId: prompt.id } });
-          setHasOwnedListing(purchased.purchased);
-
-          // Check if user already reviewed
-          if (purchased.purchased) {
-            const reviewed = await hasUserReviewed({ data: { listingId: prompt.id } });
-            setHasAlreadyReviewed(reviewed.reviewed);
-          }
-        }
       } catch (err) {
         console.error("Failed to load prompt details", err);
       }
@@ -150,13 +168,54 @@ function PromptDetail() {
     loadData();
   }, [prompt.id]);
 
+  // Load signed-in-user-specific data once the session resolves
+  useEffect(() => {
+    if (!currentUser) return;
+    const loadUserData = async () => {
+      try {
+        // Check if user has saved this listing
+        const savedData = await isSaved({ data: { listingId: prompt.id } });
+        setSaved(savedData.saved);
+
+        // Load user credits
+        const credits = await getMyCredits();
+        setUserCredits(credits.balance);
+
+        // Check if user has purchased
+        const purchased = await hasPurchased({ data: { listingId: prompt.id } });
+        setHasOwnedListing(purchased.purchased);
+
+        // Check if user already reviewed
+        if (purchased.purchased) {
+          const reviewed = await hasUserReviewed({ data: { listingId: prompt.id } });
+          setHasAlreadyReviewed(reviewed.reviewed);
+        }
+      } catch (err) {
+        console.error("Failed to load user prompt details", err);
+      }
+    };
+    loadUserData();
+  }, [currentUser, prompt.id]);
+
   const copy = () => {
+    if (!currentUser) {
+      toast.error("Sign in to copy this prompt.");
+      router.navigate({ to: "/auth" });
+      return;
+    }
     navigator.clipboard.writeText(prompt.body);
     setCopied(true);
     setTimeout(() => setCopied(false), 1800);
     // Fire-and-forget: awards author their copy commission
     if (prompt.id) {
       recordCopy({ data: { listingId: prompt.id } }).catch(() => {});
+    }
+  };
+
+  const blockCopyIfSignedOut = (e: ClipboardEvent<HTMLPreElement>) => {
+    if (!currentUser) {
+      e.preventDefault();
+      toast.error("Sign in to copy this prompt.");
     }
   };
 
@@ -207,12 +266,19 @@ function PromptDetail() {
     setEditTitle(prompt.title);
     setEditDescription(prompt.description);
     setEditBody(prompt.body);
-    setEditPrice(prompt.price);
+    setEditPrice(String(prompt.price));
     setEditOpen(true);
   };
 
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const parsedPrice = Number(editPrice);
+    if (!Number.isInteger(parsedPrice) || parsedPrice < 0 || parsedPrice > MAX_PRICE) {
+      toast.error(`Price must be a whole number between 0 and ${MAX_PRICE} ✦.`);
+      return;
+    }
+
     setSaving(true);
     try {
       await updateListing({
@@ -221,7 +287,7 @@ function PromptDetail() {
           title: editTitle,
           description: editDescription,
           body: editBody,
-          price: editPrice,
+          price: parsedPrice,
         },
       });
       await router.invalidate();
@@ -290,7 +356,35 @@ function PromptDetail() {
     }
   };
 
-  const isOwner = currentUser && currentUser.id === (prompt as any).userId;
+  const handleStartReply = (reviewUserId: string, existingReply: string | null) => {
+    setReplyingUserId(reviewUserId);
+    setReplyText(existingReply ?? "");
+  };
+
+  const handleCancelReply = () => {
+    setReplyingUserId(null);
+    setReplyText("");
+  };
+
+  const handleSubmitReply = async (reviewUserId: string) => {
+    if (!replyText.trim()) return;
+    setSubmittingReply(true);
+    try {
+      await replyToReview({
+        data: { listingId: prompt.id, reviewUserId, reply: replyText.trim() },
+      });
+      const reviewsList = await listReviews({ data: { listingId: prompt.id } });
+      setReviews(reviewsList as Review[]);
+      setReplyingUserId(null);
+      setReplyText("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to submit reply");
+    } finally {
+      setSubmittingReply(false);
+    }
+  };
+
+  const isOwner = !!currentUser && currentUser.id === prompt.userId;
 
   return (
     <div className="min-h-screen">
@@ -317,6 +411,7 @@ function PromptDetail() {
                 width={1024}
                 height={768}
                 className="w-full aspect-[4/3] object-cover"
+                onError={handleImageError}
               />
             </motion.div>
 
@@ -330,9 +425,19 @@ function PromptDetail() {
                   {copied ? "Copied!" : "Copy"}
                 </button>
               </div>
-              <pre className="font-mono text-sm whitespace-pre-wrap leading-relaxed text-white/90">
+              <pre
+                className={`font-mono text-sm whitespace-pre-wrap leading-relaxed text-white/90 ${
+                  currentUser ? "" : "select-none"
+                }`}
+                onCopy={blockCopyIfSignedOut}
+              >
                 {prompt.body}
               </pre>
+              {!currentUser && (
+                <p className="mt-3 text-xs font-bold uppercase tracking-widest text-accent-yellow">
+                  Sign in to copy this prompt.
+                </p>
+              )}
             </div>
 
             <div className="mt-8">
@@ -397,6 +502,57 @@ function PromptDetail() {
                                 className="text-[10px] font-bold uppercase tracking-widest text-ink/50 hover:text-magenta transition-colors"
                               >
                                 🗑 Delete
+                              </button>
+                            </div>
+                          ))}
+
+                        {r.creatorReply && replyingUserId !== r.userId && (
+                          <div className="mt-2 pt-2 border-t border-ink/10">
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-magenta">
+                              Creator's reply
+                            </span>
+                            <p className="text-sm text-ink/80 mt-1">{r.creatorReply}</p>
+                          </div>
+                        )}
+
+                        {isOwner &&
+                          (replyingUserId === r.userId ? (
+                            <div className="mt-2 pt-2 border-t border-ink/10">
+                              <textarea
+                                value={replyText}
+                                onChange={(e) => setReplyText(e.target.value)}
+                                rows={2}
+                                maxLength={500}
+                                placeholder="Reply to this review…"
+                                className="w-full border-2 border-ink p-2 font-medium text-sm focus:outline-none focus:ring-4 focus:ring-magenta/30 resize-none"
+                              />
+                              <div className="flex gap-3 mt-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleSubmitReply(r.userId)}
+                                  disabled={submittingReply || !replyText.trim()}
+                                  className="text-[10px] font-bold uppercase tracking-widest text-magenta hover:underline disabled:opacity-50"
+                                >
+                                  {submittingReply ? "Saving…" : "Save Reply"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleCancelReply}
+                                  disabled={submittingReply}
+                                  className="text-[10px] font-bold uppercase tracking-widest text-ink/50 hover:text-ink transition-colors disabled:opacity-50"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="mt-2 pt-2 border-t border-ink/10">
+                              <button
+                                type="button"
+                                onClick={() => handleStartReply(r.userId, r.creatorReply)}
+                                className="text-[10px] font-bold uppercase tracking-widest text-ink/50 hover:text-magenta transition-colors"
+                              >
+                                {r.creatorReply ? "✎ Edit Reply" : "↩ Reply"}
                               </button>
                             </div>
                           ))}
@@ -478,8 +634,12 @@ function PromptDetail() {
                 <p className="text-ink/70 mb-5">{prompt.description}</p>
 
                 <div className="flex items-center gap-3 mb-5 pb-5 border-b-2 border-ink">
-                  <div className="size-12 rounded-full bg-ink text-white flex items-center justify-center text-2xl border-2 border-ink">
-                    {prompt.creatorEmoji}
+                  <div className="size-12 rounded-full bg-ink text-white flex items-center justify-center text-2xl border-2 border-ink overflow-hidden">
+                    {prompt.creatorAvatarUrl ? (
+                      <img src={prompt.creatorAvatarUrl} alt="" className="size-full object-cover" />
+                    ) : (
+                      prompt.creatorEmoji
+                    )}
                   </div>
                   <div>
                     <div className="font-bold uppercase text-sm">@{prompt.creator}</div>
@@ -498,7 +658,7 @@ function PromptDetail() {
 
                 <div className="flex items-baseline justify-between mb-5">
                   <span className="font-display text-3xl text-magenta">
-                    {prompt.price === 0 ? "FREE" : `$${prompt.price}`}
+                    {prompt.price === 0 ? "FREE" : `${prompt.price} ✦`}
                   </span>
                   <button
                     onClick={handleSaveToggle}
@@ -518,7 +678,14 @@ function PromptDetail() {
                 </div>
 
                 <div className="space-y-3">
-                  {prompt.price === 0 ? (
+                  {isOwner ? (
+                    <button
+                      onClick={() => setManageModalOpen(true)}
+                      className="w-full bg-holo-purple text-white py-4 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all"
+                    >
+                      Manage Prompt
+                    </button>
+                  ) : prompt.price === 0 ? (
                     <button
                       onClick={copy}
                       className="w-full bg-accent-orange text-white py-4 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all"
@@ -543,34 +710,18 @@ function PromptDetail() {
                       }}
                       className="w-full bg-accent-orange text-white py-4 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all disabled:opacity-50"
                     >
-                      {currentUser ? `Buy for $${prompt.price}` : "Sign in to Buy"}
+                      {currentUser ? `Buy for ${prompt.price} ✦` : "Sign in to Buy"}
                     </button>
                   )}
 
                   <button
                     onClick={() => setModalOpen(true)}
-                    className="w-full bg-white text-ink py-4 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all"
+                    className={`w-full py-4 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all ${
+                      inAnyCollection ? "bg-accent-yellow text-ink" : "bg-white text-ink"
+                    }`}
                   >
-                    Save to Binder
+                    {inAnyCollection ? "✓ Saved to Binder" : "Save to Binder"}
                   </button>
-
-                  {isOwner && (
-                    <>
-                      <button
-                        onClick={handleOpenEdit}
-                        className="w-full bg-holo-purple text-white py-3 font-bold uppercase border-2 border-ink text-xs shadow-[3px_3px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all"
-                      >
-                        Edit Listing
-                      </button>
-                      <button
-                        onClick={handleDelete}
-                        disabled={deleting}
-                        className="w-full bg-magenta text-white py-3 font-bold uppercase border-2 border-ink text-xs shadow-[3px_3px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all disabled:opacity-50"
-                      >
-                        {deleting ? "Deleting..." : "Delete Listing"}
-                      </button>
-                    </>
-                  )}
                 </div>
 
                 <div className="flex flex-wrap gap-2 mt-5 pt-5 border-t-2 border-ink">
@@ -618,12 +769,13 @@ function PromptDetail() {
                     alt={p.title}
                     loading="lazy"
                     className="w-full aspect-[4/3] object-cover group-hover:scale-105 transition-transform duration-500"
+                    onError={handleImageError}
                   />
                 </div>
                 <div className="mt-2 flex justify-between items-start">
                   <span className="font-bold uppercase text-sm">{p.title}</span>
                   <span className="text-magenta font-display">
-                    {p.price === 0 ? "FREE" : `$${p.price}`}
+                    {p.price === 0 ? "FREE" : `${p.price} ✦`}
                   </span>
                 </div>
               </Link>
@@ -655,6 +807,62 @@ function PromptDetail() {
         userCredits={userCredits}
         onSuccess={handlePurchaseSuccess}
       />
+
+      {manageModalOpen && isOwner && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center px-4"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="absolute inset-0 bg-ink/60" onClick={() => setManageModalOpen(false)} />
+          <div className="relative bg-white border-4 border-ink shadow-pop-lg w-full max-w-sm">
+            <div className="p-6 border-b-4 border-ink bg-holo-purple">
+              <div className="flex items-center justify-between">
+                <h2 className="font-display text-2xl uppercase text-white">Manage Prompt</h2>
+                <button
+                  onClick={() => setManageModalOpen(false)}
+                  className="text-white text-2xl font-bold hover:opacity-70"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="font-bold block text-xs uppercase text-ink/70">Views</span>
+                  <span className="text-2xl font-bold text-holo-purple">{prompt.viewCount || 0}</span>
+                </div>
+                <div>
+                  <span className="font-bold block text-xs uppercase text-ink/70">Price</span>
+                  <span className="text-2xl font-bold text-magenta">{prompt.price} ✦</span>
+                </div>
+              </div>
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={() => {
+                    setManageModalOpen(false);
+                    handleOpenEdit();
+                  }}
+                  className="w-full bg-holo-purple text-white py-3 font-bold uppercase border-2 border-ink shadow-[3px_3px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all text-sm"
+                >
+                  Edit Listing
+                </button>
+                <button
+                  onClick={() => {
+                    setManageModalOpen(false);
+                    handleDelete();
+                  }}
+                  disabled={deleting}
+                  className="w-full bg-magenta text-white py-3 font-bold uppercase border-2 border-ink shadow-[3px_3px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all disabled:opacity-50 text-sm"
+                >
+                  {deleting ? "Deleting..." : "Delete Listing"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {editOpen && (
         <div
@@ -717,15 +925,15 @@ function PromptDetail() {
               </div>
               <div>
                 <label className="text-xs font-bold uppercase tracking-widest block mb-1">
-                  Price (✦)
+                  Price (✦, 0–{MAX_PRICE})
                 </label>
                 <input
                   type="number"
                   value={editPrice}
-                  onChange={(e) => setEditPrice(Number(e.target.value))}
+                  onChange={(e) => setEditPrice(e.target.value)}
                   min={0}
-                  max={49.99}
-                  step={0.01}
+                  max={MAX_PRICE}
+                  step={1}
                   className="w-full border-2 border-ink p-2 font-bold text-sm focus:outline-none focus:ring-4 focus:ring-magenta/30"
                 />
               </div>

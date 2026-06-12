@@ -84,12 +84,12 @@ export function PurchaseModal({ open, onClose, listingId, title, price, userCred
                 <h2 className="font-display text-2xl uppercase mb-2 leading-tight">Confirm Purchase</h2>
                 <p className="text-sm text-ink/70 mb-5">
                   Buy <span className="font-bold text-ink">"{title}"</span> for{" "}
-                  <span className="font-bold text-magenta">${price.toFixed(2)}</span>?
+                  <span className="font-bold text-magenta">{price} ✦</span>?
                 </p>
 
                 {insufficientCredits ? (
                   <p className="text-xs font-bold text-magenta mb-4">
-                    Insufficient credits. You need ${price.toFixed(2)}, you have ${userCredits.toFixed(2)}.
+                    Insufficient credits. You need {price} ✦, you have {userCredits} ✦.
                   </p>
                 ) : error ? (
                   <p className="text-xs font-bold text-magenta mb-4">{error}</p>

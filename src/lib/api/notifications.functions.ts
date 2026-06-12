@@ -4,7 +4,7 @@ import { z } from "zod";
 import { getSessionUser } from "../auth.server";
 import { getDb, type DbClient } from "../db.server";
 
-export type NotificationType = "prompt_sold" | "review_received" | "report_resolved";
+export type NotificationType = "prompt_sold" | "review_received" | "report_resolved" | "review_reply";
 
 export interface Notification {
   id: string;

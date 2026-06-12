@@ -111,7 +111,7 @@ function AuthPage() {
       // the dashboard's beforeLoad sees a stale/null entry and redirects back.
       const user = await getCurrentUser();
       queryClient.setQueryData(CURRENT_USER_QUERY_KEY, user);
-      await router.navigate({ to: "/dashboard" });
+      await router.navigate({ to: user?.is_admin ? "/admin" : "/dashboard" });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong — try again.");
     } finally {

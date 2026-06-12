@@ -9,7 +9,8 @@ import { CURRENT_USER_QUERY_KEY, getCurrentUser } from "@/lib/api/auth.functions
 import { createCollection, listCollections } from "@/lib/api/collections.functions";
 import { listSavedPrompts } from "@/lib/api/saves.functions";
 import { listPurchases } from "@/lib/api/purchases.functions";
-import { deleteListing, getMyStats, listMyListings, publishListing, type MyListing } from "@/lib/api/listings.functions";
+import { deleteListing, getMyStats, listMyListings, publishListing, setListingVisibility, type MyListing } from "@/lib/api/listings.functions";
+import { confirm } from "@/components/ui/confirm-dialog";
 import type { GamificationStats } from "@/lib/gamification";
 import { PROMPTS } from "@/lib/mock-data";
 import type { Prompt } from "@/lib/mock-data";
@@ -53,10 +54,10 @@ const colorMap = {
 // stay on /dashboard rather than navigating, so each needs an explicit
 // onClick + active-state instead of relying on router link matching.
 const DASHBOARD_VIEWS = [
-  { id: "collections", label: "Collections", icon: "📚" },
-  { id: "saved", label: "All Saved", icon: "⭐" },
-  { id: "purchased", label: "Purchased", icon: "💎" },
   { id: "myprompts", label: "My Prompts", icon: "🎨" },
+  { id: "collections", label: "Collections", icon: "📚" },
+  { id: "purchased", label: "Purchased", icon: "💎" },
+  { id: "saved", label: "All Saved", icon: "⭐" },
 ] as const;
 
 type DashboardView = (typeof DASHBOARD_VIEWS)[number]["id"];
@@ -141,6 +142,8 @@ function Dashboard() {
   const [gamificationStats, setGamificationStats] = useState<GamificationStats>({ listingsCount: 0, salesCount: 0, savesReceived: 0, reviewsWritten: 0 });
   const [draftActionId, setDraftActionId] = useState<string | null>(null);
   const [draftActionError, setDraftActionError] = useState<string | null>(null);
+  const [listingActionId, setListingActionId] = useState<string | null>(null);
+  const [listingActionError, setListingActionError] = useState<string | null>(null);
 
   useEffect(() => {
     const loadData = async () => {
@@ -186,6 +189,44 @@ function Dashboard() {
       setDraftActionError(err instanceof Error ? err.message : "Couldn't delete that draft.");
     } finally {
       setDraftActionId(null);
+    }
+  };
+
+  const handleDeleteListing = async (id: string, title: string) => {
+    const confirmed = await confirm({
+      title: "Delete this prompt?",
+      description: `"${title}" will be pulled from the marketplace and can't be restored. Anyone who saved it to a binder will see it's been removed by the creator.`,
+      confirmText: "Delete",
+      destructive: true,
+    });
+    if (!confirmed) return;
+
+    setListingActionError(null);
+    setListingActionId(id);
+    try {
+      await deleteListing({ data: { id } });
+      const myListingsData = await listMyListings();
+      setMyListings(myListingsData);
+      await router.invalidate();
+    } catch (err) {
+      setListingActionError(err instanceof Error ? err.message : "Couldn't delete that prompt.");
+    } finally {
+      setListingActionId(null);
+    }
+  };
+
+  const handleToggleVisibility = async (id: string, currentlyHidden: boolean) => {
+    setListingActionError(null);
+    setListingActionId(id);
+    try {
+      await setListingVisibility({ data: { id, hidden: !currentlyHidden } });
+      const myListingsData = await listMyListings();
+      setMyListings(myListingsData);
+      await router.invalidate();
+    } catch (err) {
+      setListingActionError(err instanceof Error ? err.message : "Couldn't update visibility.");
+    } finally {
+      setListingActionId(null);
     }
   };
 
@@ -389,23 +430,32 @@ function Dashboard() {
 
             {/* Recent prompts */}
             <h2 className="font-display text-2xl uppercase mt-14 mb-5 border-b-4 border-ink pb-2">Recently Saved</h2>
-            <div className="space-y-3">
-              {PROMPTS.slice(0, 4).map((p) => (
-                <Link
-                  key={p.id}
-                  to="/prompt/$id"
-                  params={{ id: p.id }}
-                  className="flex items-center gap-4 bg-white border-2 border-ink p-3 hover:bg-accent-yellow hover:translate-x-1 transition-all"
-                >
-                  <img src={p.image} alt={p.title} loading="lazy" className="size-16 object-cover border-2 border-ink" />
-                  <div className="flex-1 min-w-0">
-                    <div className="font-bold uppercase truncate">{p.title}</div>
-                    <div className="text-xs text-ink/60">@{p.creator} · {p.model}</div>
-                  </div>
-                  <span className="font-display text-magenta">{p.price === 0 ? "FREE" : `$${p.price}`}</span>
-                </Link>
-              ))}
-            </div>
+            {loadingData ? (
+              <p className="text-ink/60 animate-pulse">Loading your saved prompts…</p>
+            ) : savedPrompts.length === 0 ? (
+              <div className="py-10 text-center border-2 border-dashed border-ink">
+                <p className="font-display text-xl uppercase text-ink/40">Nothing saved yet</p>
+                <p className="text-sm text-ink/60 mt-2">Tap the heart icon on prompts you love to save them.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {savedPrompts.slice(0, 4).map((p) => (
+                  <Link
+                    key={p.id}
+                    to="/prompt/$id"
+                    params={{ id: p.id }}
+                    className="flex items-center gap-4 bg-white border-2 border-ink p-3 hover:bg-accent-yellow hover:translate-x-1 transition-all"
+                  >
+                    <img src={p.image} alt={p.title} loading="lazy" className="size-16 object-cover border-2 border-ink" />
+                    <div className="flex-1 min-w-0">
+                      <div className="font-bold uppercase truncate">{p.title}</div>
+                      <div className="text-xs text-ink/60">@{p.creator} · {p.model}</div>
+                    </div>
+                    <span className="font-display text-magenta">{p.price === 0 ? "FREE" : `$${p.price}`}</span>
+                  </Link>
+                ))}
+              </div>
+            )}
               </>
             )}
 
@@ -501,6 +551,9 @@ function Dashboard() {
                     {draftActionError && (
                       <p className="text-xs font-bold text-magenta bg-magenta/10 p-2 border-l-4 border-magenta mb-4">{draftActionError}</p>
                     )}
+                    {listingActionError && (
+                      <p className="text-xs font-bold text-magenta bg-magenta/10 p-2 border-l-4 border-magenta mb-4">{listingActionError}</p>
+                    )}
 
                     {/* Listing cards */}
                     <div className="space-y-4">
@@ -519,10 +572,11 @@ function Dashboard() {
                                 <span className={`shrink-0 px-2 py-0.5 text-[10px] font-bold uppercase border-2 ${
                                   listing.status === "published" ? "bg-green-100 border-green-600 text-green-700" :
                                   listing.status === "draft" ? "bg-accent-yellow border-ink text-ink" :
+                                  listing.status === "hidden" ? "bg-accent-yellow/40 border-ink text-ink/70" :
                                   listing.status === "flagged" ? "bg-magenta/10 border-magenta text-magenta" :
                                   "bg-ink/10 border-ink/40 text-ink/50"
                                 }`}>
-                                  {listing.status}
+                                  {listing.status === "hidden" ? "Hidden" : listing.status}
                                 </span>
                               </div>
                               <div className="text-sm font-bold text-ink/70">
@@ -560,6 +614,32 @@ function Dashboard() {
                               View Listing →
                             </Link>
                           </div>
+
+                          {/* Visibility + delete */}
+                          {(listing.status === "published" || listing.status === "hidden") && (
+                            <div className="border-t-4 border-ink px-4 py-2.5 flex items-center justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleToggleVisibility(listing.id, listing.status === "hidden")}
+                                disabled={listingActionId === listing.id}
+                                className="px-3 py-1.5 bg-white text-ink text-xs font-display uppercase border-2 border-ink hover:bg-accent-yellow transition-colors disabled:opacity-50"
+                              >
+                                {listingActionId === listing.id
+                                  ? "…"
+                                  : listing.status === "hidden"
+                                    ? "Unhide"
+                                    : "Hide from Market"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteListing(listing.id, listing.title)}
+                                disabled={listingActionId === listing.id}
+                                className="px-3 py-1.5 bg-white text-magenta text-xs font-display uppercase border-2 border-magenta hover:bg-magenta hover:text-white transition-colors disabled:opacity-50"
+                              >
+                                {listingActionId === listing.id ? "…" : "Delete"}
+                              </button>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>

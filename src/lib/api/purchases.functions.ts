@@ -61,7 +61,7 @@ export const purchaseListing = createServerFn({ method: "POST" })
       if (balance < price) {
         await client.query("ROLLBACK");
         throw new Error(
-          `Insufficient credits. You have ${balance.toFixed(2)}, need ${price.toFixed(2)}.`,
+          `Insufficient credits. You have ${Math.floor(balance)}, need ${Math.floor(price)}.`,
         );
       }
 
@@ -132,7 +132,7 @@ export const purchaseListing = createServerFn({ method: "POST" })
         sellerId,
         "prompt_sold",
         "Your prompt sold!",
-        `"${title}" just sold for $${sellerEarnings.toFixed(2)}.`,
+        `"${title}" just sold for ${Math.round(sellerEarnings)} ✦.`,
         data.listingId,
       );
 
@@ -171,6 +171,7 @@ export const listPurchases = createServerFn({ method: "GET" }).handler(async () 
     tags: string[];
     username: string;
     created_at: string;
+    avg_rating: number;
   }>(
     `SELECT
         prompt_listings.id,
@@ -183,10 +184,14 @@ export const listPurchases = createServerFn({ method: "GET" }).handler(async () 
         prompt_listings.model,
         prompt_listings.tags,
         users.username,
-        purchases.created_at
+        purchases.created_at,
+        COALESCE(avg_r.avg_rating, 0)::float AS avg_rating
       FROM purchases
       JOIN prompt_listings ON prompt_listings.id = purchases.listing_id
       JOIN users ON users.id = prompt_listings.user_id
+      LEFT JOIN (
+        SELECT listing_id, AVG(rating) AS avg_rating FROM reviews GROUP BY listing_id
+      ) avg_r ON avg_r.listing_id = prompt_listings.id
       WHERE purchases.buyer_id = $1
       ORDER BY purchases.created_at DESC`,
     [user.id],
@@ -203,7 +208,7 @@ export const listPurchases = createServerFn({ method: "GET" }).handler(async () 
     model: row.model,
     tags: row.tags,
     creator: row.username,
-    rating: 4.5, // TODO: Calculate from reviews
+    rating: row.avg_rating,
     shadow: "", // Decorative value
     rotate: 0, // Decorative value
     purchasedAt: row.created_at,

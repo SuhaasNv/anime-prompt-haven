@@ -61,8 +61,17 @@ export const listReviews = createServerFn({ method: "GET" })
   .inputValidator(z.object({ listingId: z.string().uuid() }))
   .handler(async ({ data }) => {
     const db = getDb();
-    const result = await db.query(
-      `SELECT reviews.user_id, reviews.rating, reviews.body, reviews.created_at, users.username
+    const result = await db.query<{
+      user_id: string;
+      rating: number;
+      body: string | null;
+      created_at: string;
+      username: string;
+      creator_reply: string | null;
+      creator_reply_at: string | null;
+    }>(
+      `SELECT reviews.user_id, reviews.rating, reviews.body, reviews.created_at, users.username,
+              reviews.creator_reply, reviews.creator_reply_at
        FROM reviews
        JOIN users ON users.id = reviews.user_id
        WHERE reviews.listing_id = $1
@@ -70,13 +79,60 @@ export const listReviews = createServerFn({ method: "GET" })
       [data.listingId]
     );
 
-    return result.rows.map((row: any) => ({
+    return result.rows.map((row) => ({
       userId: row.user_id,
       username: row.username,
       rating: row.rating,
       body: row.body,
       createdAt: row.created_at,
+      creatorReply: row.creator_reply,
+      creatorReplyAt: row.creator_reply_at,
     }));
+  });
+
+export const replyToReview = createServerFn({ method: "POST" })
+  .inputValidator(
+    z.object({
+      listingId: z.string().uuid(),
+      reviewUserId: z.string().uuid(),
+      reply: z.string().min(1).max(500),
+    })
+  )
+  .handler(async ({ data }) => {
+    const user = await getSessionUser();
+    if (!user) throw new Error("You must be signed in.");
+
+    const db = getDb();
+
+    const listing = await db.query<{ user_id: string; title: string }>(
+      "SELECT user_id, title FROM prompt_listings WHERE id = $1",
+      [data.listingId]
+    );
+    if (listing.rows.length === 0 || listing.rows[0].user_id !== user.id) {
+      throw new Error("You can only reply to reviews on your own prompts.");
+    }
+
+    const reply = sanitize(data.reply);
+    const result = await db.query(
+      `UPDATE reviews SET creator_reply = $1, creator_reply_at = now()
+       WHERE listing_id = $2 AND user_id = $3`,
+      [reply, data.listingId, data.reviewUserId]
+    );
+    if (result.rowCount === 0) {
+      throw new Error("Review not found.");
+    }
+
+    // Best-effort: never fails the reply if this throws.
+    await insertNotification(
+      db,
+      data.reviewUserId,
+      "review_reply",
+      "The creator replied to your review",
+      `"${listing.rows[0].title}" — ${reply}`,
+      data.listingId
+    );
+
+    return { ok: true as const };
   });
 
 export const deleteReview = createServerFn({ method: "POST" })

@@ -103,6 +103,16 @@ export function Navbar() {
               </Link>
             );
           })}
+          {user?.is_admin && (
+            <Link
+              to="/admin"
+              className={`font-bold uppercase text-sm transition-colors ${
+                pathname.startsWith("/admin") ? "text-magenta" : "text-ink hover:text-magenta"
+              }`}
+            >
+              Admin
+            </Link>
+          )}
         </div>
 
         {/* Mobile hamburger */}
@@ -126,11 +136,13 @@ export function Navbar() {
                 className="flex items-center gap-2 border-2 border-ink rounded-full pl-1 pr-3 py-1 bg-accent-yellow hover:bg-accent-orange hover:text-white transition-colors"
               >
               <img
-                src={MASCOTS[user.mascot].image}
+                src={user.avatarUrl ?? MASCOTS[user.mascot].image}
                 alt=""
                 width={32}
                 height={32}
-                className="size-8 rounded-full border-2 border-ink object-contain bg-white"
+                className={`size-8 rounded-full border-2 border-ink bg-white ${
+                  user.avatarUrl ? "object-cover" : "object-contain"
+                }`}
               />
               <span className="font-bold uppercase text-xs">@{user.username}</span>
             </button>
@@ -192,6 +204,17 @@ export function Navbar() {
               </Link>
             );
           })}
+          {user?.is_admin && (
+            <Link
+              to="/admin"
+              onClick={() => setMobileOpen(false)}
+              className={`block px-6 py-4 font-bold uppercase text-sm border-b-2 border-ink/10 transition-colors ${
+                pathname.startsWith("/admin") ? "bg-magenta text-white" : "hover:bg-accent-yellow"
+              }`}
+            >
+              Admin
+            </Link>
+          )}
           {user ? (
             <>
               <div className="flex items-center justify-between px-6 py-4 border-b-2 border-ink/10">
