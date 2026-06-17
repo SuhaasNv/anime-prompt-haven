@@ -240,7 +240,8 @@ export const getListing = createServerFn({ method: "GET" })
        FROM prompt_listings
        JOIN users ON users.id = prompt_listings.user_id
        LEFT JOIN avg_r ON avg_r.listing_id = prompt_listings.id
-       WHERE prompt_listings.id = $1`,
+       WHERE prompt_listings.id = $1
+         AND prompt_listings.status != 'removed'`,
       [data.id]
     );
 

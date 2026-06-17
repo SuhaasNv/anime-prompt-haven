@@ -51,9 +51,14 @@ export const Route = createFileRoute("/prompt/$id")({
       staleTime: 60_000,
     });
 
-    // Removed/hidden listings are only viewable by their creator or an admin —
-    // everyone else gets the same 404 as a deleted prompt. Exception: buyers
-    // who already purchased a now-hidden listing keep access to what they paid for.
+    // A "removed" listing has been deleted by its creator — it's gone for
+    // everyone, including the creator and admins, so the direct link and any
+    // notification pointing at it 404 like an expired link.
+    if (prompt.status === "removed") throw notFound();
+
+    // Other non-published listings (draft/hidden) are viewable by their creator
+    // or an admin; everyone else gets a 404. Exception: buyers who already
+    // purchased a now-hidden listing keep access to what they paid for.
     if (prompt.status && prompt.status !== "published") {
       let canView = !!user && (user.id === prompt.userId || user.is_admin);
       if (!canView && user && prompt.status === "hidden") {
