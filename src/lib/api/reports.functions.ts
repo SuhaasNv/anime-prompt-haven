@@ -2,11 +2,14 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { getSessionUser } from "../auth.server";
 import { getDb } from "../db.server";
+import { checkRateLimit } from "../rate-limit.server";
 import { sanitize } from "../sanitize";
 import { insertNotification } from "./notifications.functions";
 import { logAdminAction } from "./audit.functions";
 
 const REPORT_THRESHOLD = 5; // Auto-flag after this many reports
+const REPORT_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const REPORT_RATE_LIMIT_MAX_ATTEMPTS = 20;
 
 export const reportListing = createServerFn({ method: "POST" })
   .inputValidator(
@@ -19,6 +22,8 @@ export const reportListing = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const user = await getSessionUser();
     if (!user) throw new Error("You must be signed in to report listings.");
+
+    checkRateLimit(`report:${user.id}`, REPORT_RATE_LIMIT_MAX_ATTEMPTS, REPORT_RATE_LIMIT_WINDOW_MS);
 
     const db = getDb();
 

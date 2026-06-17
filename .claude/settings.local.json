@@ -54,7 +54,16 @@
       "Bash(grep -n 'toFixed\\\\|\\\\$' src/lib/api/purchases.functions.ts)",
       "Bash(bun add *)",
       "Bash(pkill -f \"npm run dev\")",
-      "Bash(pkill -f \"vite\")"
+      "Bash(pkill -f \"vite\")",
+      "Bash(rm -rf /tmp/uiux-skill)",
+      "Read(//Users/suhaasnv/.claude/skills/ui-ux-pro-max/**)",
+      "Read(//Users/suhaasnv/.claude/skills/ui-ux-pro-max/scripts/**)",
+      "Bash(awk 'NR>1 {print $2}')",
+      "Bash(docker-compose up *)",
+      "Bash(launchctl stop *)",
+      "Bash(launchctl start *)",
+      "Bash(ls docker-compose*)",
+      "Bash(ls .env*)"
     ]
   }
 }

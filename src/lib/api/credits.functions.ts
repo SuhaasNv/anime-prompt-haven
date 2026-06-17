@@ -22,52 +22,6 @@ export const getMyCredits = createServerFn({ method: "GET" }).handler(async () =
   return { balance: parseFloat(result.rows[0].balance) };
 });
 
-export const topUpCredits = createServerFn({ method: "POST" }).handler(async () => {
-  const user = await getSessionUser();
-  if (!user) throw new Error("You must be signed in to top up credits.");
-
-  const db = getDb();
-  const TOPUP_AMOUNT = 50.0;
-
-  // Rate limit: max 1 topup per 24 hours per user
-  const lastTopup = await db.query<{ created_at: string }>(
-    `SELECT created_at FROM credit_transactions
-       WHERE user_id = $1 AND type = 'bonus' AND created_at > now() - interval '24 hours'
-       ORDER BY created_at DESC LIMIT 1`,
-    [user.id],
-  );
-
-  if (lastTopup.rows.length > 0) {
-    throw new Error("You can only top up credits once per day. Try again later.");
-  }
-
-  // Insert or update user_credits
-  await db.query(
-    `INSERT INTO user_credits (user_id, balance) VALUES ($1, $2)
-       ON CONFLICT (user_id) DO UPDATE
-       SET balance = user_credits.balance + $2, updated_at = now()`,
-    [user.id, TOPUP_AMOUNT],
-  );
-
-  // Log the transaction
-  await db.query(
-    `INSERT INTO credit_transactions (user_id, amount, type, note)
-       VALUES ($1, $2, 'bonus', 'Demo top-up')`,
-    [user.id, TOPUP_AMOUNT],
-  );
-
-  // Fetch updated balance
-  const result = await db.query<{ balance: string }>(
-    "SELECT balance FROM user_credits WHERE user_id = $1",
-    [user.id],
-  );
-
-  return {
-    ok: true as const,
-    newBalance: parseFloat(result.rows[0].balance),
-  };
-});
-
 export const listTransactions = createServerFn({ method: "GET" }).handler(async () => {
   const user = await getSessionUser();
   if (!user) return [];

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getMyCredits, listTransactions, topUpCredits } from "@/lib/api/credits.functions";
+import { getMyCredits, listTransactions } from "@/lib/api/credits.functions";
 
 interface Transaction {
   id: string;
@@ -22,14 +22,12 @@ const TYPE_LABELS: Record<string, { label: string; color: string }> = {
 interface CreditsModalProps {
   open: boolean;
   onClose: () => void;
-  onBalanceChange?: (newBalance: number) => void;
 }
 
-export function CreditsModal({ open, onClose, onBalanceChange }: CreditsModalProps) {
+export function CreditsModal({ open, onClose }: CreditsModalProps) {
   const [balance, setBalance] = useState<number | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
-  const [toppingUp, setToppingUp] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -47,21 +45,6 @@ export function CreditsModal({ open, onClose, onBalanceChange }: CreditsModalPro
     };
     load();
   }, [open]);
-
-  const handleTopUp = async () => {
-    setToppingUp(true);
-    try {
-      const result = await topUpCredits();
-      setBalance(result.newBalance);
-      onBalanceChange?.(result.newBalance);
-      const txns = await listTransactions();
-      setTransactions(txns as Transaction[]);
-    } catch {
-      // ignore
-    } finally {
-      setToppingUp(false);
-    }
-  };
 
   if (!open) return null;
 
@@ -107,19 +90,6 @@ export function CreditsModal({ open, onClose, onBalanceChange }: CreditsModalPro
                 </li>
               ))}
             </ul>
-          </div>
-
-          {/* Top-up */}
-          <div>
-            <button
-              type="button"
-              onClick={handleTopUp}
-              disabled={toppingUp}
-              className="w-full bg-accent-orange text-white py-3 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all disabled:opacity-50"
-            >
-              {toppingUp ? "Topping up…" : "✦ Demo Top-Up (+100)"}
-            </button>
-            <p className="text-[10px] text-ink/40 text-center mt-1 font-mono uppercase">Stripe integration coming soon</p>
           </div>
 
           {/* Transaction history */}

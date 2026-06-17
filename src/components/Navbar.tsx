@@ -236,7 +236,6 @@ export function Navbar() {
     <CreditsModal
       open={creditsOpen}
       onClose={() => setCreditsOpen(false)}
-      onBalanceChange={(balance) => queryClient.setQueryData(CREDITS_QUERY_KEY, { balance })}
     />
     </>
   );

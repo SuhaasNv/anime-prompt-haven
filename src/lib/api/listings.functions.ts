@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-import { getSessionUser } from "../auth.server";
+import { getSessionUser, type SessionUser } from "../auth.server";
 import { getDb } from "../db.server";
 import { sanitize } from "../sanitize";
 import { validateAndNormalizeImage } from "../image-validation.server";
@@ -82,6 +82,42 @@ function toPrompt(row: ListingRow, index: number): Prompt {
     shadow: SHADOWS[index % SHADOWS.length],
     rotate: ROTATIONS[index % ROTATIONS.length],
   };
+}
+
+// Fetches which of the given paid listings (not owned by the user) the user
+// has purchased, so `canViewBody` can redact the rest in a single query.
+async function getPurchasedIds(
+  db: ReturnType<typeof getDb>,
+  userId: string | undefined,
+  rows: { id: string; price: string; user_id: string }[]
+): Promise<Set<string>> {
+  if (!userId) return new Set();
+
+  const candidateIds = rows
+    .filter((row) => Number(row.price) > 0 && row.user_id !== userId)
+    .map((row) => row.id);
+  if (candidateIds.length === 0) return new Set();
+
+  const result = await db.query<{ listing_id: string }>(
+    "SELECT listing_id FROM purchases WHERE buyer_id = $1 AND listing_id = ANY($2)",
+    [userId, candidateIds]
+  );
+  return new Set(result.rows.map((r) => r.listing_id));
+}
+
+// The full prompt body is only sent to viewers who are entitled to it:
+// the creator, an admin, anyone for a free prompt, or a buyer who purchased it.
+// Everyone else gets `body: ""` from `toPrompt` so paid prompts can't be
+// read for free via the API response.
+function canViewBody(
+  row: { price: string; user_id: string; id: string },
+  user: SessionUser | null,
+  purchasedIds: Set<string>
+): boolean {
+  if (Number(row.price) <= 0) return true;
+  if (!user) return false;
+  if (user.id === row.user_id || user.is_admin) return true;
+  return purchasedIds.has(row.id);
 }
 
 const AVG_RATING_CTE = `
@@ -184,7 +220,14 @@ export const listListings = createServerFn({ method: "GET" })
       [...params, limit, offset]
     );
 
-    return result.rows.map((row, index) => toPrompt(row, offset + index));
+    const user = await getSessionUser();
+    const purchasedIds = await getPurchasedIds(db, user?.id, result.rows);
+
+    return result.rows.map((row, index) => {
+      const prompt = toPrompt(row, offset + index);
+      if (!canViewBody(row, user, purchasedIds)) prompt.body = "";
+      return prompt;
+    });
   });
 
 export const getListing = createServerFn({ method: "GET" })
@@ -202,7 +245,13 @@ export const getListing = createServerFn({ method: "GET" })
     );
 
     const row = result.rows[0];
-    return row ? toPrompt(row, 0) : null;
+    if (!row) return null;
+
+    const user = await getSessionUser();
+    const purchasedIds = await getPurchasedIds(db, user?.id, [row]);
+    const prompt = toPrompt(row, 0);
+    if (!canViewBody(row, user, purchasedIds)) prompt.body = "";
+    return prompt;
   });
 
 export const createListing = createServerFn({ method: "POST" })

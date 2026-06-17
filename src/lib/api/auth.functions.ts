@@ -15,6 +15,9 @@ const MAX_AVATAR_IMAGE_LENGTH = 4_000_000;
 const SIGNIN_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 const SIGNIN_RATE_LIMIT_MAX_ATTEMPTS = 10;
 
+const SIGNUP_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const SIGNUP_RATE_LIMIT_MAX_ATTEMPTS = 5;
+
 // Precomputed bcrypt hash with no matching password, used to keep the
 // "user not found" path's timing in line with the "wrong password" path
 // so response time can't be used to enumerate registered emails.
@@ -35,6 +38,8 @@ export const signUp = createServerFn({ method: "POST" })
     }),
   )
   .handler(async ({ data }) => {
+    checkRateLimit(`signup:${data.email.toLowerCase()}`, SIGNUP_RATE_LIMIT_MAX_ATTEMPTS, SIGNUP_RATE_LIMIT_WINDOW_MS);
+
     const db = getDb();
     const existing = await db.query("SELECT id FROM users WHERE email = $1", [data.email]);
     if (existing.rows.length > 0) {

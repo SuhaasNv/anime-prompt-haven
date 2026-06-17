@@ -74,7 +74,7 @@ function TermsPage() {
             <li>Having your prompt purchased (70% of the sale price).</li>
           </ul>
           <p>
-            The platform retains 30% of all sales and copy rewards as a service fee. Demo top-ups are for testing purposes only.
+            The platform retains 30% of all sales and copy rewards as a service fee.
           </p>
         </Section>
 
