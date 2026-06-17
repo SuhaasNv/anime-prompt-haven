@@ -16,6 +16,7 @@ const TYPE_ICON: Record<Notification["type"], string> = {
   prompt_sold: "💰",
   review_received: "⭐",
   report_resolved: "✅",
+  review_reply: "💬",
 };
 
 export function NotificationBell({ unreadCount, onOpened }: NotificationBellProps) {

@@ -57,8 +57,10 @@ const MOODS = [
 ] as const;
 
 export const Route = createFileRoute("/auth")({
-  validateSearch: (search: Record<string, unknown>) => ({
-    mode: (search.mode === "signup" ? "signup" : "signin") as "signin" | "signup",
+  // `mode` is optional so links can navigate to "/auth" without specifying it
+  // (defaults to sign-in); only the signup CTA passes `mode: "signup"`.
+  validateSearch: (search: Record<string, unknown>): { mode?: "signin" | "signup" } => ({
+    mode: search.mode === "signup" ? "signup" : "signin",
   }),
   head: () => ({
     meta: [
@@ -76,7 +78,7 @@ function AuthPage() {
   const queryClient = useQueryClient();
   const reduceMotion = useReducedMotion();
   const { mode: initialMode } = Route.useSearch();
-  const [mode, setMode] = useState<Mode>(initialMode);
+  const [mode, setMode] = useState<Mode>(initialMode ?? "signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("");

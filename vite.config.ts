@@ -14,5 +14,15 @@ export default defineConfig({
   },
   vite: {
     server: { port: 3000, strictPort: true },
+    // Pre-bundle these at cold start. Otherwise Vite discovers them on the first
+    // request, re-optimizes mid-session, and forces a reload — which invalidates
+    // already-loaded chunks and surfaces as "504 (Outdated Optimize Dep)" in the browser.
+    optimizeDeps: {
+      include: [
+        "@tanstack/router-core",
+        "@tanstack/router-core/ssr/client",
+        "seroval",
+      ],
+    },
   },
 });

@@ -26,7 +26,7 @@ export function ContributeModal({ open, onClose }: ContributeModalProps) {
   const [body, setBody] = useState("");
   const [price, setPrice] = useState("0");
   const [category, setCategory] = useState(LISTING_CATEGORIES[0]);
-  const [model, setModel] = useState(MODELS[0]);
+  const [model, setModel] = useState<(typeof MODELS)[number]>(MODELS[0]);
   const [tagsInput, setTagsInput] = useState("");
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
   const [imageName, setImageName] = useState<string | null>(null);
@@ -327,7 +327,7 @@ export function ContributeModal({ open, onClose }: ContributeModalProps) {
           image: imageDataUrl,
           price: parsedPrice,
           category,
-          model: model as (typeof MODELS)[number],
+          model,
           tags,
           status,
         },
@@ -406,6 +406,30 @@ export function ContributeModal({ open, onClose }: ContributeModalProps) {
                     {checkingImage ? "Checking image..." : (imageName ?? "Click to upload an image — required")}
                   </span>
                 </label>
+
+                {/* Marketplace preview — mirrors PromptCard exactly (4:3 box, blurred
+                    backdrop, contained image) so creators see how their upload will
+                    actually be framed on a card before publishing. */}
+                {imageDataUrl && (
+                  <div className="mt-3">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-ink/60 block mb-1">
+                      Marketplace preview
+                    </span>
+                    <div className="w-full max-w-[220px] aspect-[4/3] overflow-hidden border-2 border-ink relative bg-ink">
+                      <img
+                        src={imageDataUrl}
+                        alt=""
+                        aria-hidden="true"
+                        className="absolute inset-0 w-full h-full object-cover scale-110 blur-xl brightness-90"
+                      />
+                      <img
+                        src={imageDataUrl}
+                        alt="Marketplace preview"
+                        className="relative w-full h-full object-contain"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -547,7 +571,7 @@ export function ContributeModal({ open, onClose }: ContributeModalProps) {
                   <label className="text-xs font-bold uppercase tracking-widest block mb-1">Model</label>
                   <select
                     value={model}
-                    onChange={(e) => setModel(e.target.value)}
+                    onChange={(e) => setModel(e.target.value as (typeof MODELS)[number])}
                     className="w-full bg-white border-2 border-ink p-2 font-bold text-sm focus:outline-none focus:ring-4 focus:ring-magenta/30"
                   >
                     {MODELS.map((m) => (

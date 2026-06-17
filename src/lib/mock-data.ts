@@ -137,7 +137,7 @@ export const CATEGORIES = [
   "Image Generation",
 ];
 
-export const MODELS = ["Midjourney", "ChatGPT", "DALL-E", "Flux", "Stable Diffusion"];
+export const MODELS = ["Midjourney", "ChatGPT", "DALL-E", "Flux", "Stable Diffusion"] as const;
 
 export const TAGS = ["#PHOTOREAL", "#CYBERPUNK", "#CONCEPT-ART", "#FANTASY", "#RETRO", "#ANIME", "#GOTHIC"];
 

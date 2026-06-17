@@ -35,13 +35,23 @@ export function PromptCard({ prompt, purchased = false, currentUserId }: PromptC
       <Link to="/prompt/$id" params={{ id: prompt.id }} className="absolute inset-0 z-0" aria-label={prompt.title} />
       <div className="relative pointer-events-none">
         <div className="w-full aspect-[4/3] mb-4 overflow-hidden border-2 border-ink relative bg-ink">
+          {/* Blurred, zoomed copy fills the card so any aspect ratio (e.g. 16:9)
+              reads as an ambient backdrop instead of being cropped. */}
+          <img
+            src={prompt.image}
+            alt=""
+            aria-hidden="true"
+            loading="lazy"
+            className="absolute inset-0 w-full h-full object-cover scale-110 blur-xl brightness-90"
+          />
+          {/* The full, uncropped image, centered at its natural aspect ratio. */}
           <img
             src={prompt.image}
             alt={prompt.title}
             loading="lazy"
             width={768}
             height={576}
-            className="w-full h-full object-cover"
+            className="relative w-full h-full object-contain"
             onError={handleImageError}
           />
           <span className="absolute top-2 left-2 bg-ink text-white text-[10px] font-bold uppercase px-2 py-0.5 tracking-widest">

@@ -35,7 +35,7 @@ export const Route = createFileRoute("/")({
       queryFn: getCurrentUser,
       staleTime: 60_000,
     });
-    let collections = [];
+    let collections: Awaited<ReturnType<typeof listCollections>> = [];
     let purchasedIds: string[] = [];
     try {
       // Both server fns check the session internally and return []
@@ -357,7 +357,7 @@ function MarketPage() {
                       orange: { text: "text-accent-orange", bg: "bg-accent-orange" },
                       purple: { text: "text-holo-purple", bg: "bg-holo-purple" },
                     } as const;
-                    const colors = colorMap[c.color] || colorMap.magenta;
+                    const colors = colorMap[c.color as keyof typeof colorMap] || colorMap.magenta;
                     const progress = c.promptIds.length > 0 ? Math.min(100, (c.promptIds.length / 10) * 100) : 0;
                     return (
                       <div key={c.id} className="group cursor-pointer">

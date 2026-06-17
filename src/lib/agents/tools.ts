@@ -18,6 +18,27 @@ function parseJSON(text: string): unknown {
   }
 }
 
+// LLMs occasionally overshoot a character limit despite explicit instructions.
+// The marketplace enforces hard caps (280 for descriptions, 80 for titles), so
+// clamp the model's text to the cap at a word boundary instead of failing the
+// whole suggestion when it runs a few characters long.
+function clampField(json: unknown, field: string, max: number): unknown {
+  if (json && typeof json === "object" && !Array.isArray(json)) {
+    const record = json as Record<string, unknown>;
+    const value = record[field];
+    if (typeof value === "string" && value.length > max) {
+      let truncated = value.slice(0, max);
+      const lastSpace = truncated.lastIndexOf(" ");
+      // Prefer a word boundary, but only if it doesn't cut off too much text.
+      if (lastSpace > max - 40) {
+        truncated = truncated.slice(0, lastSpace);
+      }
+      record[field] = truncated.trimEnd();
+    }
+  }
+  return json;
+}
+
 // Helper to add timeout to async operations
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, operation: string): Promise<T> {
   return Promise.race([
@@ -222,7 +243,7 @@ Return JSON with:
 
   try {
     const json = parseJSON(message);
-    return TitleGenerationSchema.parse(json);
+    return TitleGenerationSchema.parse(clampField(json, "title", 80));
   } catch (e) {
     throw new Error(`Failed to generate title: ${e instanceof Error ? e.message : String(e)}`);
   }
@@ -276,7 +297,7 @@ Return JSON with:
 
   try {
     const json = parseJSON(message);
-    return DescriptionGenerationSchema.parse(json);
+    return DescriptionGenerationSchema.parse(clampField(json, "description", 280));
   } catch (e) {
     throw new Error(`Failed to generate description: ${e instanceof Error ? e.message : String(e)}`);
   }
@@ -334,7 +355,7 @@ Return JSON with:
 
   try {
     const json = parseJSON(message);
-    return DescriptionSchema.parse(json);
+    return DescriptionSchema.parse(clampField(json, "polished", 280));
   } catch (e) {
     throw new Error(`Failed to parse description polish: ${e instanceof Error ? e.message : String(e)}`);
   }

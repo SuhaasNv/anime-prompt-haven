@@ -3,6 +3,10 @@ import { z } from "zod";
 import { getSessionUser } from "../auth.server";
 import { getDb } from "../db.server";
 import { insertNotification } from "./notifications.functions";
+import type { Prompt } from "../mock-data";
+
+// Decorative card-shadow colours, picked deterministically per listing id.
+const PURCHASED_SHADOWS: Prompt["shadow"][] = ["magenta", "orange", "yellow", "purple", "black"];
 
 export const purchaseListing = createServerFn({ method: "POST" })
   .inputValidator(z.object({ listingId: z.string().uuid() }))
@@ -170,8 +174,11 @@ export const listPurchases = createServerFn({ method: "GET" }).handler(async () 
     model: string;
     tags: string[];
     username: string;
+    avatar_url: string | null;
+    user_id: string;
     created_at: string;
     avg_rating: number;
+    review_count: number;
   }>(
     `SELECT
         prompt_listings.id,
@@ -184,13 +191,17 @@ export const listPurchases = createServerFn({ method: "GET" }).handler(async () 
         prompt_listings.model,
         prompt_listings.tags,
         users.username,
+        users.avatar_url,
+        prompt_listings.user_id,
         purchases.created_at,
-        COALESCE(avg_r.avg_rating, 0)::float AS avg_rating
+        COALESCE(avg_r.avg_rating, 0)::float AS avg_rating,
+        COALESCE(avg_r.review_count, 0)::int AS review_count
       FROM purchases
       JOIN prompt_listings ON prompt_listings.id = purchases.listing_id
       JOIN users ON users.id = prompt_listings.user_id
       LEFT JOIN (
-        SELECT listing_id, AVG(rating) AS avg_rating FROM reviews GROUP BY listing_id
+        SELECT listing_id, AVG(rating) AS avg_rating, COUNT(*) AS review_count
+        FROM reviews GROUP BY listing_id
       ) avg_r ON avg_r.listing_id = prompt_listings.id
       WHERE purchases.buyer_id = $1
       ORDER BY purchases.created_at DESC`,
@@ -200,17 +211,21 @@ export const listPurchases = createServerFn({ method: "GET" }).handler(async () 
   return result.rows.map((row) => ({
     id: row.id,
     title: row.title,
-    description: row.description,
+    description: row.description ?? "",
     body: row.body,
-    image: row.image,
+    image: row.image ?? "",
     price: parseFloat(row.price),
     category: row.category,
-    model: row.model,
+    model: row.model as Prompt["model"],
     tags: row.tags,
     creator: row.username,
+    creatorEmoji: row.username.charAt(0).toUpperCase(),
+    creatorAvatarUrl: row.avatar_url,
+    userId: row.user_id,
     rating: row.avg_rating,
-    shadow: "", // Decorative value
-    rotate: 0, // Decorative value
+    reviews: row.review_count,
+    shadow: PURCHASED_SHADOWS[row.id.charCodeAt(0) % PURCHASED_SHADOWS.length],
+    rotate: 0 as const, // Decorative value
     purchasedAt: row.created_at,
   }));
 });

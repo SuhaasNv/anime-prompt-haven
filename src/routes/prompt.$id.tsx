@@ -203,6 +203,10 @@ function PromptDetail() {
       router.navigate({ to: "/auth" });
       return;
     }
+    if (!canViewBody) {
+      toast.error("Purchase this prompt to copy it.");
+      return;
+    }
     navigator.clipboard.writeText(prompt.body);
     setCopied(true);
     setTimeout(() => setCopied(false), 1800);
@@ -212,10 +216,13 @@ function PromptDetail() {
     }
   };
 
-  const blockCopyIfSignedOut = (e: ClipboardEvent<HTMLPreElement>) => {
+  const blockCopyIfLocked = (e: ClipboardEvent<HTMLPreElement>) => {
     if (!currentUser) {
       e.preventDefault();
       toast.error("Sign in to copy this prompt.");
+    } else if (!canViewBody) {
+      e.preventDefault();
+      toast.error("Purchase this prompt to copy it.");
     }
   };
 
@@ -241,6 +248,8 @@ function PromptDetail() {
     setUserCredits(newBalance);
     queryClient.setQueryData(CREDITS_QUERY_KEY, { balance: newBalance });
     setHasOwnedListing(true);
+    // Re-run the loader so the now-purchased prompt's full body is fetched.
+    router.invalidate();
   };
 
   const handleDelete = async () => {
@@ -385,6 +394,9 @@ function PromptDetail() {
   };
 
   const isOwner = !!currentUser && currentUser.id === prompt.userId;
+  // The server only sends the real prompt body to viewers entitled to it
+  // (free prompts, the creator, an admin, or a buyer) — everyone else gets "".
+  const canViewBody = prompt.body !== "";
 
   return (
     <div className="min-h-screen">
@@ -403,14 +415,24 @@ function PromptDetail() {
               initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-              className="border-4 border-ink shadow-pop-lg bg-white"
+              className="relative aspect-[4/3] overflow-hidden border-4 border-ink shadow-pop-lg bg-ink"
             >
+              {/* Blurred, zoomed copy of the image fills the panel so any
+                  letterbox area reads as an ambient backdrop instead of bare
+                  bars. Decorative only — the sharp copy below carries the alt. */}
+              <img
+                src={prompt.image}
+                alt=""
+                aria-hidden="true"
+                className="absolute inset-0 w-full h-full object-cover scale-110 blur-2xl brightness-90"
+              />
+              {/* The full, uncropped image, centered at its natural aspect ratio. */}
               <img
                 src={prompt.image}
                 alt={prompt.title}
                 width={1024}
                 height={768}
-                className="w-full aspect-[4/3] object-cover"
+                className="relative w-full h-full object-contain"
                 onError={handleImageError}
               />
             </motion.div>
@@ -425,15 +447,21 @@ function PromptDetail() {
                   {copied ? "Copied!" : "Copy"}
                 </button>
               </div>
-              <pre
-                className={`font-mono text-sm whitespace-pre-wrap leading-relaxed text-white/90 ${
-                  currentUser ? "" : "select-none"
-                }`}
-                onCopy={blockCopyIfSignedOut}
-              >
-                {prompt.body}
-              </pre>
-              {!currentUser && (
+              {canViewBody ? (
+                <pre
+                  className={`font-mono text-sm whitespace-pre-wrap leading-relaxed text-white/90 ${
+                    currentUser ? "" : "select-none"
+                  }`}
+                  onCopy={blockCopyIfLocked}
+                >
+                  {prompt.body}
+                </pre>
+              ) : (
+                <p className="font-mono text-sm text-white/50 italic py-6 text-center">
+                  🔒 Purchase this prompt to view the full text.
+                </p>
+              )}
+              {!currentUser && canViewBody && (
                 <p className="mt-3 text-xs font-bold uppercase tracking-widest text-accent-yellow">
                   Sign in to copy this prompt.
                 </p>
