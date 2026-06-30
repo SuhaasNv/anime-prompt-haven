@@ -127,8 +127,8 @@ export function ChatWidget({ open, onClose, mascotKey, isAuthed }: ChatWidgetPro
     setMessages([]);
   };
 
-  const send = useCallback(async () => {
-    const text = input.trim();
+  const send = useCallback(async (override?: string) => {
+    const text = (override ?? input).trim();
     if (!text || busy) return;
 
     setInput("");
@@ -361,9 +361,7 @@ export function ChatWidget({ open, onClose, mascotKey, isAuthed }: ChatWidgetPro
                 ].map((suggestion) => (
                   <button
                     key={suggestion}
-                    onClick={() => {
-                      setInput(suggestion);
-                    }}
+                    onClick={() => void send(suggestion)}
                     className="w-full text-left px-3 py-2 text-xs font-medium border-2 border-ink/20 hover:border-magenta hover:text-magenta transition-colors bg-white text-ink/70 leading-snug"
                   >
                     {suggestion}
