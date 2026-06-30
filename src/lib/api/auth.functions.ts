@@ -138,6 +138,15 @@ export const completeOnboarding = createServerFn({ method: "POST" })
     return { ok: true as const };
   });
 
+export const markTourComplete = createServerFn({ method: "POST" }).handler(async () => {
+  const user = await getSessionUser();
+  if (!user) {
+    throw new Error("You need to be signed in to do that.");
+  }
+  await getDb().query("UPDATE users SET tour_completed = true WHERE id = $1", [user.id]);
+  return { ok: true as const };
+});
+
 export const signIn = createServerFn({ method: "POST" })
   .inputValidator(
     z.object({

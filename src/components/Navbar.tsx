@@ -10,9 +10,9 @@ import { CreditsModal } from "./CreditsModal";
 import { NotificationBell } from "./NotificationBell";
 
 const links = [
-  { to: "/", label: "Market" },
-  { to: "/explore", label: "Explore" },
-  { to: "/dashboard", label: "Binder" },
+  { to: "/", label: "Market", tour: "market" },
+  { to: "/explore", label: "Explore", tour: "explore" },
+  { to: "/dashboard", label: "Binder", tour: "binder" },
 ] as const;
 
 export function Navbar() {
@@ -95,6 +95,7 @@ export function Navbar() {
               <Link
                 key={l.to}
                 to={l.to}
+                data-tour={l.tour}
                 className={`font-bold uppercase text-sm transition-colors ${
                   active ? "text-magenta" : "text-ink hover:text-magenta"
                 }`}
@@ -127,9 +128,12 @@ export function Navbar() {
         {user ? (
           <div className="hidden md:flex items-center gap-4">
             <NotificationBell unreadCount={unreadCount} onOpened={() => setUnreadCount(0)} />
-            <CreditBalanceWidget balance={creditBalance} onOpen={() => setCreditsOpen(true)} />
+            <div data-tour="credits" className="flex items-center">
+              <CreditBalanceWidget balance={creditBalance} onOpen={() => setCreditsOpen(true)} />
+            </div>
             <div ref={menuRef} className="relative">
               <button
+                data-tour="studio"
                 onClick={() => setMenuOpen((o) => !o)}
                 aria-haspopup="true"
                 aria-expanded={menuOpen}

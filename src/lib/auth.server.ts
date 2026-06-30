@@ -18,6 +18,7 @@ export type SessionUser = {
   is_admin: boolean;
   avatarUrl: string | null;
   onboarded: boolean;
+  tour_completed: boolean;
 };
 
 /**
@@ -88,7 +89,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
 
   const result = await getDb().query<SessionUser>(
     `SELECT users.id, users.email, users.username, users.mascot, users.is_admin,
-            users.avatar_url AS "avatarUrl", users.onboarded
+            users.avatar_url AS "avatarUrl", users.onboarded, users.tour_completed
      FROM sessions
      JOIN users ON users.id = sessions.user_id
      WHERE sessions.token = $1 AND sessions.expires_at > now()`,

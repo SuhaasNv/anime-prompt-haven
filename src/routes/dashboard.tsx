@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { Navbar } from "@/components/Navbar";
 import { ContributeModal } from "@/components/ContributeModal";
+import { ProductTour } from "@/components/ProductTour";
 import { PromptCard } from "@/components/PromptCard";
 import { CURRENT_USER_QUERY_KEY, getCurrentUser } from "@/lib/api/auth.functions";
 import { createCollection, listCollections } from "@/lib/api/collections.functions";
@@ -233,6 +234,7 @@ function Dashboard() {
   return (
     <div className="min-h-screen">
       <Navbar />
+      <ProductTour run={user.onboarded && !user.tour_completed} />
       <ContributeModal open={contributing} onClose={() => setContributing(false)} />
       {creating && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4" role="dialog" aria-modal="true">
@@ -331,6 +333,7 @@ function Dashboard() {
               </div>
               <div className="flex flex-wrap gap-3">
                 <button
+                  data-tour="contribute"
                   onClick={() => setContributing(true)}
                   className="bg-magenta text-white px-5 py-3 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all whitespace-nowrap"
                 >
