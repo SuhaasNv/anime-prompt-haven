@@ -285,7 +285,7 @@ export function ChatWidget({ open, onClose, mascotKey, isAuthed }: ChatWidgetPro
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 24, scale: 0.95 }}
           transition={{ type: "spring", stiffness: 320, damping: 28 }}
-          className={`fixed right-3 sm:right-6 z-[101] flex flex-col bg-white border-4 border-ink shadow-pop-lg transition-all duration-300 ${expanded ? "bottom-6 w-[min(680px,calc(100vw-24px))] max-h-[88vh]" : "bottom-36 w-[min(420px,calc(100vw-24px))] max-h-[640px]"}`}
+          className={`fixed z-[101] flex flex-col bg-white border-4 border-ink shadow-pop-lg transition-all duration-300 ${expanded ? "inset-4" : "right-3 sm:right-6 bottom-36 w-[min(420px,calc(100vw-24px))] max-h-[640px]"}`}
           style={{ willChange: "transform, opacity" }}
         >
           {/* Header */}
@@ -307,7 +307,7 @@ export function ChatWidget({ open, onClose, mascotKey, isAuthed }: ChatWidgetPro
                 aria-label={expanded ? "Shrink chat" : "Expand chat"}
                 title={expanded ? "Shrink" : "Expand"}
               >
-                {expanded ? "⊟" : "⊞"}
+                {expanded ? "↙↗" : "↗↙"}
               </button>
               <button
                 onClick={onClose}
