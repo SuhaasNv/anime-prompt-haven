@@ -269,6 +269,78 @@ export function toBaseMessages(history: ChatMessage[]) {
   );
 }
 
+// ── Query rewriter ────────────────────────────────────────────────────────────
+// Lightweight gpt-4o-mini call that runs BEFORE the supervisor. It takes the
+// user's raw input (possibly vague, typo-filled, or conversational) and returns:
+//   - rephrased: a cleaner, explicit version for the supervisor to route
+//   - label: short "I'll…" string for the intent chip in the UI
+//
+// For casual messages (hi, bye, thanks) the original is returned unchanged so
+// we don't waste a roundtrip. Falls back gracefully if the call fails.
+
+export interface RephrasedQuery {
+  rephrased: string;
+  label: string | null;
+}
+
+const CASUAL_RE = /^(hi+|hey+|hello|sup|yo|what'?s up|howdy|hiya|bye+|goodbye|see ya|later|cya|goodnight|night|thanks?|thank you|ok|okay|cool|nice|great|lol|haha|yes|no|sure|nope)\b/i;
+
+export async function rephraseQuery(
+  input: string,
+  history: ChatMessage[],
+): Promise<RephrasedQuery> {
+  // Skip rewriting for short casual messages — no latency cost on greetings
+  if (CASUAL_RE.test(input.trim()) && input.trim().split(/\s+/).length <= 4) {
+    return { rephrased: input, label: null };
+  }
+
+  try {
+    const config = getServerConfig();
+    if (!config.openaiApiKey) return { rephrased: input, label: "On it…" };
+
+    const llm = new ChatOpenAI({
+      model: "gpt-4o-mini",
+      apiKey: config.openaiApiKey,
+      temperature: 0,
+      maxTokens: 120,
+    });
+
+    const recentContext = history
+      .slice(-4)
+      .map((m) => `${m.role}: ${m.content}`)
+      .join("\n");
+
+    const result = await llm.invoke([
+      {
+        role: "system" as const,
+        content: `You are a query rewriter for PromptStar, an AI image-prompt marketplace.
+Given the user's raw message and recent chat context, produce:
+1. "rephrased": A clear, explicit instruction for an AI agent. Fix typos, expand abbreviations, make model/category/style explicit when implied. Do NOT add information the user didn't imply.
+2. "label": A short "I'll…" phrase (max 6 words) describing the action for the UI. Return null if the message is purely conversational.
+
+Output ONLY valid JSON: {"rephrased":"...","label":"..."}
+
+Recent context (for reference only):
+${recentContext || "(none)"}`,
+      },
+      { role: "user" as const, content: input },
+    ]);
+
+    const text = typeof result.content === "string" ? result.content : "";
+    const match = text.match(/\{[\s\S]*?\}/);
+    if (!match) return { rephrased: input, label: "On it…" };
+
+    const parsed = JSON.parse(match[0]) as { rephrased?: string; label?: string | null };
+    return {
+      rephrased: parsed.rephrased?.trim() || input,
+      label: parsed.label ?? null,
+    };
+  } catch {
+    // Fail silently — the supervisor still gets the original query
+    return { rephrased: input, label: "On it…" };
+  }
+}
+
 // ── Tool activity labels (for SSE "tool" events in the UI) ───────────────────
 
 export const TOOL_ACTIVITY_LABELS: Record<string, string> = {
