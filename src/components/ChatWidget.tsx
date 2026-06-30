@@ -268,7 +268,26 @@ export function ChatWidget({ open, onClose, mascotKey, isAuthed }: ChatWidgetPro
                 </Link>
               </div>
             ) : messages.length === 0 ? (
-              <p className="text-xs text-ink/40 text-center py-6">Starting chat…</p>
+              <div className="py-4 space-y-3">
+                <p className="text-[11px] font-bold uppercase tracking-widest text-ink/30 text-center">Try asking…</p>
+                {[
+                  "Find me cyberpunk prompts under 3 credits",
+                  "What's trending right now?",
+                  "Write a Midjourney prompt for a neon city at night",
+                  "How do I earn credits?",
+                  "Show me my saved prompts",
+                ].map((suggestion) => (
+                  <button
+                    key={suggestion}
+                    onClick={() => {
+                      setInput(suggestion);
+                    }}
+                    className="w-full text-left px-3 py-2 text-xs font-medium border-2 border-ink/20 hover:border-magenta hover:text-magenta transition-colors bg-white text-ink/70 leading-snug"
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
             ) : (
               messages.map((msg, i) => (
                 <div key={i} className={`flex flex-col gap-1 ${msg.role === "user" ? "items-end" : "items-start"}`}>

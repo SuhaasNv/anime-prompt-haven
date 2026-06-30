@@ -79,9 +79,9 @@ const STEPS: TourStep[] = [
   {
     element: '[data-tour="mascot-chat"]',
     popover: {
-      title: "Meet your AI companion! 🤖",
+      title: "Your AI companion is here! 🤖",
       description:
-        "Click your mascot anytime to open the AI chatbot. Ask it to find prompts, manage your binder, craft better prompts, or answer any platform question.",
+        "Click your mascot to chat with an AI assistant. It can find prompts, save to your binder, craft better prompts for any model, answer platform questions, and more — just ask!",
       side: "top",
       align: "end",
     },
