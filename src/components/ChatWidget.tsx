@@ -285,34 +285,11 @@ export function ChatWidget({ open, onClose, mascotKey, isAuthed }: ChatWidgetPro
           initial={{ opacity: 0, y: 24, scale: 0.95 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 24, scale: 0.95 }}
-          transition={{ type: "spring", stiffness: 260, damping: 28 }}
-          className={`fixed z-[101] flex bg-white border-4 border-ink shadow-pop-lg ${expanded ? "inset-4 flex-row" : "right-3 sm:right-6 bottom-36 w-[min(420px,calc(100vw-24px))] max-h-[640px] flex-col"}`}
+          transition={{ type: "spring", stiffness: 300, damping: 30 }}
+          layoutTransition={{ type: "spring", stiffness: 300, damping: 30 }}
+          className={`fixed z-[101] flex flex-col bg-white border-4 border-ink shadow-pop-lg right-3 sm:right-6 bottom-36 ${expanded ? "w-[min(860px,calc(100vw-24px))] max-h-[calc(100vh-160px)]" : "w-[min(420px,calc(100vw-24px))] max-h-[640px]"}`}
           style={{ willChange: "transform, opacity" }}
         >
-          {/* Mascot sidebar — only in expanded/fullscreen mode */}
-          <AnimatePresence>
-            {expanded && (
-              <motion.div
-                key="mascot-sidebar"
-                initial={{ opacity: 0, width: 0 }}
-                animate={{ opacity: 1, width: 192 }}
-                exit={{ opacity: 0, width: 0 }}
-                transition={{ type: "spring", stiffness: 260, damping: 28 }}
-                className="flex flex-col items-center justify-end gap-4 shrink-0 border-r-4 border-ink bg-accent-yellow p-4 overflow-hidden"
-              >
-                <img
-                  src={mascot.image}
-                  alt={mascot.name}
-                  className="w-36 h-36 object-contain drop-shadow-lg"
-                />
-                <div className="text-center whitespace-nowrap">
-                  <p className="font-display text-sm uppercase leading-tight">{mascot.name}</p>
-                  <p className="text-xs text-ink/50 mt-0.5">{mascot.tagline}</p>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
           {/* Main chat column */}
           <div className="flex flex-col flex-1 min-w-0 min-h-0">
           {/* Header */}
