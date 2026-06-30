@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as ProfileRouteImport } from './routes/profile'
+import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as ExploreRouteImport } from './routes/explore'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as AuthRouteImport } from './routes/auth'
@@ -20,6 +21,8 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as UUsernameRouteImport } from './routes/u.$username'
 import { Route as PromptIdRouteImport } from './routes/prompt.$id'
 import { Route as CollectionIdRouteImport } from './routes/collection.$id'
+import { Route as ApiAuthGoogleRouteImport } from './routes/api.auth.google'
+import { Route as ApiAuthGoogleCallbackRouteImport } from './routes/api.auth.google.callback'
 
 const TermsRoute = TermsRouteImport.update({
   id: '/terms',
@@ -34,6 +37,11 @@ const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
 const ProfileRoute = ProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OnboardingRoute = OnboardingRouteImport.update({
+  id: '/onboarding',
+  path: '/onboarding',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ExploreRoute = ExploreRouteImport.update({
@@ -76,6 +84,16 @@ const CollectionIdRoute = CollectionIdRouteImport.update({
   path: '/collection/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAuthGoogleRoute = ApiAuthGoogleRouteImport.update({
+  id: '/api/auth/google',
+  path: '/api/auth/google',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAuthGoogleCallbackRoute = ApiAuthGoogleCallbackRouteImport.update({
+  id: '/callback',
+  path: '/callback',
+  getParentRoute: () => ApiAuthGoogleRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -83,12 +101,15 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRoute
   '/dashboard': typeof DashboardRoute
   '/explore': typeof ExploreRoute
+  '/onboarding': typeof OnboardingRoute
   '/profile': typeof ProfileRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
   '/collection/$id': typeof CollectionIdRoute
   '/prompt/$id': typeof PromptIdRoute
   '/u/$username': typeof UUsernameRoute
+  '/api/auth/google': typeof ApiAuthGoogleRouteWithChildren
+  '/api/auth/google/callback': typeof ApiAuthGoogleCallbackRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -96,12 +117,15 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/dashboard': typeof DashboardRoute
   '/explore': typeof ExploreRoute
+  '/onboarding': typeof OnboardingRoute
   '/profile': typeof ProfileRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
   '/collection/$id': typeof CollectionIdRoute
   '/prompt/$id': typeof PromptIdRoute
   '/u/$username': typeof UUsernameRoute
+  '/api/auth/google': typeof ApiAuthGoogleRouteWithChildren
+  '/api/auth/google/callback': typeof ApiAuthGoogleCallbackRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -110,12 +134,15 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/dashboard': typeof DashboardRoute
   '/explore': typeof ExploreRoute
+  '/onboarding': typeof OnboardingRoute
   '/profile': typeof ProfileRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
   '/collection/$id': typeof CollectionIdRoute
   '/prompt/$id': typeof PromptIdRoute
   '/u/$username': typeof UUsernameRoute
+  '/api/auth/google': typeof ApiAuthGoogleRouteWithChildren
+  '/api/auth/google/callback': typeof ApiAuthGoogleCallbackRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -125,12 +152,15 @@ export interface FileRouteTypes {
     | '/auth'
     | '/dashboard'
     | '/explore'
+    | '/onboarding'
     | '/profile'
     | '/sitemap.xml'
     | '/terms'
     | '/collection/$id'
     | '/prompt/$id'
     | '/u/$username'
+    | '/api/auth/google'
+    | '/api/auth/google/callback'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -138,12 +168,15 @@ export interface FileRouteTypes {
     | '/auth'
     | '/dashboard'
     | '/explore'
+    | '/onboarding'
     | '/profile'
     | '/sitemap.xml'
     | '/terms'
     | '/collection/$id'
     | '/prompt/$id'
     | '/u/$username'
+    | '/api/auth/google'
+    | '/api/auth/google/callback'
   id:
     | '__root__'
     | '/'
@@ -151,12 +184,15 @@ export interface FileRouteTypes {
     | '/auth'
     | '/dashboard'
     | '/explore'
+    | '/onboarding'
     | '/profile'
     | '/sitemap.xml'
     | '/terms'
     | '/collection/$id'
     | '/prompt/$id'
     | '/u/$username'
+    | '/api/auth/google'
+    | '/api/auth/google/callback'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -165,12 +201,14 @@ export interface RootRouteChildren {
   AuthRoute: typeof AuthRoute
   DashboardRoute: typeof DashboardRoute
   ExploreRoute: typeof ExploreRoute
+  OnboardingRoute: typeof OnboardingRoute
   ProfileRoute: typeof ProfileRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   TermsRoute: typeof TermsRoute
   CollectionIdRoute: typeof CollectionIdRoute
   PromptIdRoute: typeof PromptIdRoute
   UUsernameRoute: typeof UUsernameRoute
+  ApiAuthGoogleRoute: typeof ApiAuthGoogleRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
@@ -194,6 +232,13 @@ declare module '@tanstack/react-router' {
       path: '/profile'
       fullPath: '/profile'
       preLoaderRoute: typeof ProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/onboarding': {
+      id: '/onboarding'
+      path: '/onboarding'
+      fullPath: '/onboarding'
+      preLoaderRoute: typeof OnboardingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/explore': {
@@ -252,8 +297,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CollectionIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/auth/google': {
+      id: '/api/auth/google'
+      path: '/api/auth/google'
+      fullPath: '/api/auth/google'
+      preLoaderRoute: typeof ApiAuthGoogleRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/auth/google/callback': {
+      id: '/api/auth/google/callback'
+      path: '/callback'
+      fullPath: '/api/auth/google/callback'
+      preLoaderRoute: typeof ApiAuthGoogleCallbackRouteImport
+      parentRoute: typeof ApiAuthGoogleRoute
+    }
   }
 }
+
+interface ApiAuthGoogleRouteChildren {
+  ApiAuthGoogleCallbackRoute: typeof ApiAuthGoogleCallbackRoute
+}
+
+const ApiAuthGoogleRouteChildren: ApiAuthGoogleRouteChildren = {
+  ApiAuthGoogleCallbackRoute: ApiAuthGoogleCallbackRoute,
+}
+
+const ApiAuthGoogleRouteWithChildren = ApiAuthGoogleRoute._addFileChildren(
+  ApiAuthGoogleRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
@@ -261,12 +332,14 @@ const rootRouteChildren: RootRouteChildren = {
   AuthRoute: AuthRoute,
   DashboardRoute: DashboardRoute,
   ExploreRoute: ExploreRoute,
+  OnboardingRoute: OnboardingRoute,
   ProfileRoute: ProfileRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   TermsRoute: TermsRoute,
   CollectionIdRoute: CollectionIdRoute,
   PromptIdRoute: PromptIdRoute,
   UUsernameRoute: UUsernameRoute,
+  ApiAuthGoogleRoute: ApiAuthGoogleRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
