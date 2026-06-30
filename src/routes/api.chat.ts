@@ -16,6 +16,30 @@ import type { PromptCard } from "@/lib/agents/chatTools.server";
 import type { MascotKey } from "@/lib/mascots";
 import { logChatEvent } from "@/lib/monitoring.server";
 
+// Keyword-based intent classifier — runs synchronously before the supervisor,
+// emitting an immediate "I'll…" signal so the user sees the agent is thinking.
+function quickIntentLabel(input: string): string | null {
+  const t = input.trim().toLowerCase();
+  // Casual greetings / farewells — no label needed
+  if (/^(hi+|hey+|hello|sup|yo|what'?s up|howdy|hiya|hola)\b/.test(t)) return null;
+  if (/^(bye+|goodbye|see ya|later|cya|goodnight|night)\b/.test(t)) return null;
+  // Detect intent by keywords, most-specific first
+  if (/\b(find|search|show|recommend|suggest|browse|look for|discover)\b.*\bprompt/.test(t) ||
+      /\bprompt.*\b(for|about|of|with)\b/.test(t) ||
+      /\b(trending|new arrivals?|what'?s (hot|popular|new))\b/.test(t)) {
+    return "🔎 Searching the marketplace…";
+  }
+  if (/\b(save|binder|collection|saved|my list)\b/.test(t)) return "📂 Checking your binder…";
+  if (/\bcredits?\b/.test(t)) return "💰 Checking your credits…";
+  if (/\b(craft|write|create|improve|make|build|generate|give me a)\b.*\bprompt/.test(t) ||
+      /\bprompt.*\b(for|of|about)\b/.test(t)) {
+    return "✏️ Crafting a prompt…";
+  }
+  if (/\b(how|what|where|when|why|explain|tell me|can i|do i)\b/.test(t)) return "💡 Looking that up…";
+  // Generic fallback
+  return "💭 On it…";
+}
+
 export const Route = createFileRoute("/api/chat")({
   server: {
     handlers: {
@@ -83,6 +107,10 @@ export const Route = createFileRoute("/api/chat")({
               // Split history and latest input
               const history = messages.slice(0, -1);
               const lastMsg = messages[messages.length - 1];
+
+              // Emit immediate intent signal so the user sees the agent is processing
+              const intentLabel = quickIntentLabel(lastMsg.content);
+              if (intentLabel) emit("intent", { label: intentLabel });
 
               const eventStream = supervisor.streamEvents(
                 { input: lastMsg.content, chat_history: toBaseMessages(history) },

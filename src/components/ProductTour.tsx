@@ -76,6 +76,16 @@ const STEPS: TourStep[] = [
       align: "end",
     },
   },
+  {
+    element: '[data-tour="mascot-chat"]',
+    popover: {
+      title: "Meet your AI companion! 🤖",
+      description:
+        "Click your mascot anytime to open the AI chatbot. Ask it to find prompts, manage your binder, craft better prompts, or answer any platform question.",
+      side: "top",
+      align: "end",
+    },
+  },
 ];
 
 /**

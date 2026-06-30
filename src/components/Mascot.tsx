@@ -56,7 +56,7 @@ export function Mascot() {
               className="pointer-events-auto relative max-w-[220px] bg-white border-2 border-ink rounded-xl p-3 shadow-pop"
             >
               <p className="text-xs font-bold uppercase leading-tight italic text-ink">{tip}</p>
-              <p className="text-[10px] text-ink/50 mt-1 not-italic">Click me to chat!</p>
+              <p className="text-[10px] text-magenta font-bold mt-1 not-italic">👋 I'm here — click to chat!</p>
               <button
                 onClick={() => setTipOpen(false)}
                 aria-label="Dismiss tip"
@@ -76,11 +76,16 @@ export function Mascot() {
           animate={{ y: [0, -8, 0] }}
           transition={{ y: { duration: 3.5, repeat: Infinity, ease: "easeInOut" } }}
           aria-label={`Chat with ${active.name}`}
+          data-tour="mascot-chat"
           className="pointer-events-auto relative size-24"
         >
           <div
             className={`absolute inset-0 blur-2xl rounded-full transition-colors duration-300 ${chatOpen ? "bg-magenta/60" : "bg-magenta/40"}`}
           />
+          {/* Attention ring — pulses until the user opens chat for the first time */}
+          {tipOpen && !chatOpen && (
+            <span className="absolute inset-0 rounded-full border-2 border-magenta animate-ping opacity-60 pointer-events-none" />
+          )}
           <AnimatePresence mode="wait">
             <motion.img
               key={mascotKey}

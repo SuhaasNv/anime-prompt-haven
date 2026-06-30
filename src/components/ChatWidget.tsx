@@ -151,11 +151,17 @@ export function ChatWidget({ open, onClose, mascotKey, isAuthed }: ChatWidgetPro
 
           if (eventName === "token") {
             updateLast((m) => ({ ...m, content: m.content + (payload.text as string) }));
+          } else if (eventName === "intent") {
+            // Quick pre-chip emitted immediately so user knows the bot is thinking
+            updateLast((m) => ({ ...m, toolChips: [payload.label as string] }));
           } else if (eventName === "tool") {
-            updateLast((m) => ({
-              ...m,
-              toolChips: [...(m.toolChips ?? []), payload.label as string],
-            }));
+            updateLast((m) => {
+              const existing = m.toolChips ?? [];
+              // Replace the single intent pre-chip on first real tool event
+              const isOnlyPreChip = existing.length === 1;
+              const base = isOnlyPreChip ? [] : existing;
+              return { ...m, toolChips: [...base, payload.label as string] };
+            });
           } else if (eventName === "cards") {
             updateLast((m) => ({ ...m, cards: payload.cards as PromptCard[] }));
           } else if (eventName === "error") {
