@@ -5,4 +5,4 @@ echo "Running database migrations..."
 node scripts/migrate.mjs
 
 echo "Starting PromptStar..."
-exec node dist/server/server.js
+exec node scripts/node-server.mjs

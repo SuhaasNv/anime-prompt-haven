@@ -7,6 +7,16 @@
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
 export default defineConfig({
+  // Nitro is disabled on purpose. Its node-server preset inlines node_modules
+  // into a single ESM bundle, which breaks packages that read their own files at
+  // runtime (jsdom's default-stylesheet via __dirname, css-tree's data/patch.json,
+  // jsdom's internal require()s) and 500s every SSR route that sanitizes HTML.
+  // Externalizing those out of the bundle crashes rollup codegen. The plain Vite
+  // SSR build (nitro: false) already keeps deps external as bare imports, so we
+  // serve it with a thin Node listener (scripts/node-server.mjs) and ship real
+  // node_modules in the container. Build emits dist/server/server.js (fetch
+  // handler) + dist/client (static assets).
+  nitro: false,
   tanstackStart: {
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
     // nitro/vite builds from this
