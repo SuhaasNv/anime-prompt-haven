@@ -166,20 +166,26 @@ export function ChatWidget({ open, onClose, mascotKey, isAuthed }: ChatWidgetPro
         return;
       }
 
-      if (res.status === 429) {
+      if (!res.ok) {
+        let errMsg = "Something went wrong. Please try again.";
+        try {
+          const j = await res.json() as { error?: string };
+          if (j.error) errMsg = j.error;
+        } catch { /* ignore */ }
         setMessages((prev) => {
           const next = [...prev];
           next[next.length - 1] = {
             role: "assistant",
-            content: "You've sent a lot of messages! Please wait a few minutes before trying again.",
+            content: errMsg,
             streaming: false,
           };
           return next;
         });
+        setBusy(false);
         return;
       }
 
-      if (!res.ok || !res.body) {
+      if (!res.body) {
         throw new Error(`Server error: ${res.status}`);
       }
 
@@ -279,7 +285,7 @@ export function ChatWidget({ open, onClose, mascotKey, isAuthed }: ChatWidgetPro
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 24, scale: 0.95 }}
           transition={{ type: "spring", stiffness: 320, damping: 28 }}
-          className={`fixed right-6 z-[101] flex flex-col bg-white border-4 border-ink shadow-pop-lg transition-all duration-300 ${expanded ? "bottom-6 w-[680px] max-h-[88vh]" : "bottom-36 w-[420px] max-h-[640px]"}`}
+          className={`fixed right-3 sm:right-6 z-[101] flex flex-col bg-white border-4 border-ink shadow-pop-lg transition-all duration-300 ${expanded ? "bottom-6 w-[min(680px,calc(100vw-24px))] max-h-[88vh]" : "bottom-36 w-[min(420px,calc(100vw-24px))] max-h-[640px]"}`}
           style={{ willChange: "transform, opacity" }}
         >
           {/* Header */}
