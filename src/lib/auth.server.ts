@@ -98,3 +98,30 @@ export async function getSessionUser(): Promise<SessionUser | null> {
 
   return result.rows[0] ?? null;
 }
+
+/** Read session from a raw Web Request (for file-route API handlers that don't run in H3 context). */
+export async function getSessionUserFromRequest(request: Request): Promise<SessionUser | null> {
+  const header = request.headers.get("cookie");
+  if (!header) return null;
+  let token: string | null = null;
+  for (const pair of header.split(";")) {
+    const idx = pair.indexOf("=");
+    if (idx === -1) continue;
+    if (pair.slice(0, idx).trim() === SESSION_COOKIE) {
+      token = pair.slice(idx + 1).trim();
+      break;
+    }
+  }
+  if (!token) return null;
+
+  const result = await getDb().query<SessionUser>(
+    `SELECT users.id, users.email, users.username, users.mascot, users.is_admin,
+            users.avatar_url AS "avatarUrl", users.onboarded, users.tour_completed
+     FROM sessions
+     JOIN users ON users.id = sessions.user_id
+     WHERE sessions.token = $1 AND sessions.expires_at > now()`,
+    [token],
+  );
+
+  return result.rows[0] ?? null;
+}

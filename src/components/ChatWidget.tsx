@@ -1,0 +1,339 @@
+// Slide-up chat panel anchored bottom-right (mascot corner).
+// Reads the /api/chat SSE stream and renders messages, tool chips, and prompt cards.
+
+import { useEffect, useRef, useState, useCallback } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Link } from "@tanstack/react-router";
+import type { MascotKey } from "@/lib/mascots";
+import { MASCOTS } from "@/lib/mascots";
+
+interface PromptCard {
+  id: string;
+  title: string;
+  price: number;
+  model: string;
+  creator: string;
+  rating: number | null;
+}
+
+interface Message {
+  role: "user" | "assistant";
+  content: string;
+  cards?: PromptCard[];
+  toolChips?: string[];
+  streaming?: boolean;
+}
+
+interface ChatWidgetProps {
+  open: boolean;
+  onClose: () => void;
+  mascotKey: MascotKey;
+  isAuthed: boolean;
+}
+
+export function ChatWidget({ open, onClose, mascotKey, isAuthed }: ChatWidgetProps) {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState("");
+  const [busy, setBusy] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const mascot = MASCOTS[mascotKey];
+
+  // Scroll to bottom on new messages
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  // Greet on first open
+  useEffect(() => {
+    if (open && messages.length === 0 && isAuthed) {
+      setMessages([
+        {
+          role: "assistant",
+          content: `Hey! I'm ${mascot.name}. I can help you find prompts, manage your binder, craft better prompts, or answer platform questions. What can I do for you?`,
+        },
+      ]);
+    }
+  }, [open, isAuthed, mascot.name, messages.length]);
+
+  const send = useCallback(async () => {
+    const text = input.trim();
+    if (!text || busy) return;
+
+    setInput("");
+    setBusy(true);
+
+    // Append user message
+    setMessages((prev) => [...prev, { role: "user", content: text }]);
+
+    // Placeholder assistant message
+    const assistantIdx = messages.length + 1;
+    setMessages((prev) => [
+      ...prev,
+      { role: "assistant", content: "", streaming: true, toolChips: [] },
+    ]);
+
+    abortRef.current = new AbortController();
+
+    try {
+      const history = messages.map((m) => ({ role: m.role, content: m.content }));
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: [...history, { role: "user", content: text }] }),
+        signal: abortRef.current.signal,
+      });
+
+      if (res.status === 401) {
+        setMessages((prev) => {
+          const next = [...prev];
+          next[next.length - 1] = {
+            role: "assistant",
+            content: "Please sign in to chat with me!",
+            streaming: false,
+          };
+          return next;
+        });
+        return;
+      }
+
+      if (res.status === 429) {
+        setMessages((prev) => {
+          const next = [...prev];
+          next[next.length - 1] = {
+            role: "assistant",
+            content: "You've sent a lot of messages! Please wait a few minutes before trying again.",
+            streaming: false,
+          };
+          return next;
+        });
+        return;
+      }
+
+      if (!res.ok || !res.body) {
+        throw new Error(`Server error: ${res.status}`);
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      const updateLast = (updater: (msg: Message) => Message) => {
+        setMessages((prev) => {
+          const next = [...prev];
+          next[next.length - 1] = updater(next[next.length - 1]);
+          return next;
+        });
+      };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const chunks = buffer.split("\n\n");
+        buffer = chunks.pop() ?? "";
+
+        for (const chunk of chunks) {
+          const lines = chunk.split("\n");
+          let eventName = "message";
+          let dataStr = "";
+          for (const line of lines) {
+            if (line.startsWith("event: ")) eventName = line.slice(7);
+            if (line.startsWith("data: ")) dataStr = line.slice(6);
+          }
+          if (!dataStr) continue;
+
+          let payload: Record<string, unknown>;
+          try {
+            payload = JSON.parse(dataStr) as Record<string, unknown>;
+          } catch {
+            continue;
+          }
+
+          if (eventName === "token") {
+            updateLast((m) => ({ ...m, content: m.content + (payload.text as string) }));
+          } else if (eventName === "tool") {
+            updateLast((m) => ({
+              ...m,
+              toolChips: [...(m.toolChips ?? []), payload.label as string],
+            }));
+          } else if (eventName === "cards") {
+            updateLast((m) => ({ ...m, cards: payload.cards as PromptCard[] }));
+          } else if (eventName === "error") {
+            updateLast((m) => ({
+              ...m,
+              content: m.content || (payload.message as string),
+              streaming: false,
+            }));
+          } else if (eventName === "done") {
+            updateLast((m) => ({ ...m, streaming: false }));
+          }
+        }
+      }
+      // Suppress unused variable lint warning — assistantIdx tracks position conceptually
+      void assistantIdx;
+    } catch (err) {
+      if ((err as Error).name !== "AbortError") {
+        setMessages((prev) => {
+          const next = [...prev];
+          next[next.length - 1] = {
+            role: "assistant",
+            content: "Something went wrong. Please try again.",
+            streaming: false,
+          };
+          return next;
+        });
+      }
+    } finally {
+      setBusy(false);
+      abortRef.current = null;
+    }
+  }, [input, busy, messages]);
+
+  const handleKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      void send();
+    }
+  };
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          key="chat-widget"
+          initial={{ opacity: 0, y: 24, scale: 0.95 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 24, scale: 0.95 }}
+          transition={{ type: "spring", stiffness: 320, damping: 28 }}
+          className="fixed bottom-36 right-6 z-[101] w-[340px] max-h-[520px] flex flex-col bg-white border-4 border-ink shadow-pop-lg"
+          style={{ willChange: "transform, opacity" }}
+        >
+          {/* Header */}
+          <div className="flex items-center gap-3 px-4 py-3 border-b-4 border-ink bg-accent-yellow shrink-0">
+            <div className="font-display text-sm uppercase leading-tight">
+              Chat with {mascot.name}
+            </div>
+            <div className="ml-auto flex gap-2">
+              <button
+                onClick={() => setMessages([])}
+                className="text-xs font-bold text-ink/50 hover:text-ink transition-colors"
+                title="Clear chat"
+              >
+                Clear
+              </button>
+              <button
+                onClick={onClose}
+                className="text-sm font-bold hover:text-magenta transition-colors"
+                aria-label="Close chat"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
+            {!isAuthed ? (
+              <div className="text-center py-8">
+                <p className="text-sm font-bold text-ink/60 mb-4">Sign in to chat with {mascot.name}</p>
+                <Link
+                  to="/auth"
+                  onClick={onClose}
+                  className="inline-block px-4 py-2 bg-magenta text-white font-bold text-sm border-2 border-ink shadow-pop hover:translate-x-[-2px] hover:translate-y-[-2px] transition-transform"
+                >
+                  Sign In
+                </Link>
+              </div>
+            ) : messages.length === 0 ? (
+              <p className="text-xs text-ink/40 text-center py-6">Starting chat…</p>
+            ) : (
+              messages.map((msg, i) => (
+                <div key={i} className={`flex flex-col gap-1 ${msg.role === "user" ? "items-end" : "items-start"}`}>
+                  {/* Tool chips */}
+                  {msg.role === "assistant" && (msg.toolChips ?? []).length > 0 && (
+                    <div className="flex flex-wrap gap-1 mb-1">
+                      {msg.toolChips!.map((chip, j) => (
+                        <span
+                          key={j}
+                          className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 bg-accent-yellow border border-ink/30 text-ink/70"
+                        >
+                          {chip}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Bubble */}
+                  {(msg.content || msg.streaming) && (
+                    <div
+                      className={`max-w-[90%] px-3 py-2 text-sm leading-relaxed border-2 border-ink ${
+                        msg.role === "user"
+                          ? "bg-magenta text-white"
+                          : "bg-white text-ink shadow-[2px_2px_0_0_#0a0a0c]"
+                      }`}
+                    >
+                      {msg.content || (msg.streaming ? <span className="animate-pulse">…</span> : null)}
+                    </div>
+                  )}
+
+                  {/* Prompt cards */}
+                  {msg.role === "assistant" && (msg.cards ?? []).length > 0 && (
+                    <div className="w-full space-y-1 mt-1">
+                      {msg.cards!.slice(0, 4).map((card) => (
+                        <Link
+                          key={card.id}
+                          to="/prompt/$id"
+                          params={{ id: card.id }}
+                          onClick={onClose}
+                          className="flex items-center gap-2 px-3 py-2 border-2 border-ink bg-white hover:bg-accent-yellow transition-colors shadow-[2px_2px_0_0_#0a0a0c] group"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <p className="font-bold text-xs truncate group-hover:text-magenta transition-colors">
+                              {card.title}
+                            </p>
+                            <p className="text-[10px] text-ink/50">{card.model}</p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="font-display text-sm">{card.price}✦</p>
+                            {card.rating != null && (
+                              <p className="text-[10px] text-ink/50">★ {card.rating.toFixed(1)}</p>
+                            )}
+                          </div>
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+            <div ref={bottomRef} />
+          </div>
+
+          {/* Input */}
+          {isAuthed && (
+            <div className="flex gap-0 border-t-4 border-ink shrink-0">
+              <input
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKey}
+                placeholder="Ask anything…"
+                disabled={busy}
+                className="flex-1 px-3 py-3 text-sm bg-white text-ink placeholder:text-ink/30 outline-none disabled:opacity-50"
+              />
+              <button
+                onClick={() => void send()}
+                disabled={busy || !input.trim()}
+                className="px-4 py-3 bg-magenta text-white font-bold text-sm border-l-4 border-ink hover:bg-ink transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {busy ? "…" : "→"}
+              </button>
+            </div>
+          )}
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}

@@ -21,6 +21,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as UUsernameRouteImport } from './routes/u.$username'
 import { Route as PromptIdRouteImport } from './routes/prompt.$id'
 import { Route as CollectionIdRouteImport } from './routes/collection.$id'
+import { Route as ApiChatRouteImport } from './routes/api.chat'
 import { Route as ApiAuthGoogleRouteImport } from './routes/api.auth.google'
 import { Route as ApiAuthGoogleCallbackRouteImport } from './routes/api.auth.google.callback'
 
@@ -84,6 +85,11 @@ const CollectionIdRoute = CollectionIdRouteImport.update({
   path: '/collection/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiChatRoute = ApiChatRouteImport.update({
+  id: '/api/chat',
+  path: '/api/chat',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAuthGoogleRoute = ApiAuthGoogleRouteImport.update({
   id: '/api/auth/google',
   path: '/api/auth/google',
@@ -105,6 +111,7 @@ export interface FileRoutesByFullPath {
   '/profile': typeof ProfileRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
+  '/api/chat': typeof ApiChatRoute
   '/collection/$id': typeof CollectionIdRoute
   '/prompt/$id': typeof PromptIdRoute
   '/u/$username': typeof UUsernameRoute
@@ -121,6 +128,7 @@ export interface FileRoutesByTo {
   '/profile': typeof ProfileRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
+  '/api/chat': typeof ApiChatRoute
   '/collection/$id': typeof CollectionIdRoute
   '/prompt/$id': typeof PromptIdRoute
   '/u/$username': typeof UUsernameRoute
@@ -138,6 +146,7 @@ export interface FileRoutesById {
   '/profile': typeof ProfileRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
+  '/api/chat': typeof ApiChatRoute
   '/collection/$id': typeof CollectionIdRoute
   '/prompt/$id': typeof PromptIdRoute
   '/u/$username': typeof UUsernameRoute
@@ -156,6 +165,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/sitemap.xml'
     | '/terms'
+    | '/api/chat'
     | '/collection/$id'
     | '/prompt/$id'
     | '/u/$username'
@@ -172,6 +182,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/sitemap.xml'
     | '/terms'
+    | '/api/chat'
     | '/collection/$id'
     | '/prompt/$id'
     | '/u/$username'
@@ -188,6 +199,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/sitemap.xml'
     | '/terms'
+    | '/api/chat'
     | '/collection/$id'
     | '/prompt/$id'
     | '/u/$username'
@@ -205,6 +217,7 @@ export interface RootRouteChildren {
   ProfileRoute: typeof ProfileRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   TermsRoute: typeof TermsRoute
+  ApiChatRoute: typeof ApiChatRoute
   CollectionIdRoute: typeof CollectionIdRoute
   PromptIdRoute: typeof PromptIdRoute
   UUsernameRoute: typeof UUsernameRoute
@@ -297,6 +310,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CollectionIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/chat': {
+      id: '/api/chat'
+      path: '/api/chat'
+      fullPath: '/api/chat'
+      preLoaderRoute: typeof ApiChatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/auth/google': {
       id: '/api/auth/google'
       path: '/api/auth/google'
@@ -336,6 +356,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProfileRoute: ProfileRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   TermsRoute: TermsRoute,
+  ApiChatRoute: ApiChatRoute,
   CollectionIdRoute: CollectionIdRoute,
   PromptIdRoute: PromptIdRoute,
   UUsernameRoute: UUsernameRoute,
