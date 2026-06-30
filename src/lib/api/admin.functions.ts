@@ -65,11 +65,13 @@ export const getDashboardMetrics = createServerFn({ method: "GET" }).handler(asy
     total30d: number;
     platformFees24h: number;
   }>(
+    // Aliases are double-quoted to preserve camelCase — Postgres folds unquoted
+    // identifiers to lowercase, which would make row.platformFees24h undefined.
     `SELECT
-      (SELECT COALESCE(SUM(price_paid), 0) FROM purchases WHERE created_at >= $1)::numeric AS total24h,
-      (SELECT COALESCE(SUM(price_paid), 0) FROM purchases WHERE created_at >= $2)::numeric AS total7d,
-      (SELECT COALESCE(SUM(price_paid), 0) FROM purchases WHERE created_at >= $3)::numeric AS total30d,
-      (SELECT COALESCE(SUM(ABS(amount)), 0) FROM credit_transactions WHERE created_at >= $1 AND type = 'platform_fee')::numeric AS platformFees24h`,
+      (SELECT COALESCE(SUM(price_paid), 0) FROM purchases WHERE created_at >= $1)::numeric AS "total24h",
+      (SELECT COALESCE(SUM(price_paid), 0) FROM purchases WHERE created_at >= $2)::numeric AS "total7d",
+      (SELECT COALESCE(SUM(price_paid), 0) FROM purchases WHERE created_at >= $3)::numeric AS "total30d",
+      (SELECT COALESCE(SUM(ABS(amount)), 0) FROM credit_transactions WHERE created_at >= $1 AND type = 'platform_fee')::numeric AS "platformFees24h"`,
     [day1, day7, day30],
   );
 
@@ -84,11 +86,10 @@ export const getDashboardMetrics = createServerFn({ method: "GET" }).handler(asy
       (SELECT COUNT(DISTINCT seller_id) FROM (
         SELECT pl.user_id as seller_id FROM prompt_listings pl
         WHERE pl.created_at >= $1
-      ) t)::integer AS activeCreators24h,
-      (SELECT COUNT(DISTINCT buyer_id) FROM purchases WHERE created_at >= $1)::integer AS activeBuyers24h,
-      (SELECT COUNT(*) FROM users WHERE created_at IS NOT NULL)::integer AS totalUsers,
-      (SELECT COUNT(*) FROM prompt_listings)::integer AS totalCreators
-    FROM users LIMIT 1`,
+      ) t)::integer AS "activeCreators24h",
+      (SELECT COUNT(DISTINCT buyer_id) FROM purchases WHERE created_at >= $1)::integer AS "activeBuyers24h",
+      (SELECT COUNT(*) FROM users WHERE created_at IS NOT NULL)::integer AS "totalUsers",
+      (SELECT COUNT(*) FROM prompt_listings)::integer AS "totalCreators"`,
     [day1],
   );
 
@@ -99,10 +100,9 @@ export const getDashboardMetrics = createServerFn({ method: "GET" }).handler(asy
     totalListings: number;
   }>(
     `SELECT
-      (SELECT COUNT(*) FROM prompt_listings WHERE status = 'flagged')::integer AS flaggedListings,
-      (SELECT COUNT(DISTINCT listing_id) FROM reports)::integer AS pendingReports,
-      (SELECT COUNT(*) FROM prompt_listings)::integer AS totalListings
-    FROM prompt_listings LIMIT 1`,
+      (SELECT COUNT(*) FROM prompt_listings WHERE status = 'flagged')::integer AS "flaggedListings",
+      (SELECT COUNT(DISTINCT listing_id) FROM reports)::integer AS "pendingReports",
+      (SELECT COUNT(*) FROM prompt_listings)::integer AS "totalListings"`,
   );
 
   const revenue = revenueResult.rows[0] || {
