@@ -208,7 +208,7 @@ export function ChatWidget({ open, onClose, mascotKey, isAuthed }: ChatWidgetPro
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 24, scale: 0.95 }}
           transition={{ type: "spring", stiffness: 320, damping: 28 }}
-          className="fixed bottom-36 right-6 z-[101] w-[340px] max-h-[520px] flex flex-col bg-white border-4 border-ink shadow-pop-lg"
+          className="fixed bottom-36 right-6 z-[101] w-[420px] max-h-[640px] flex flex-col bg-white border-4 border-ink shadow-pop-lg"
           style={{ willChange: "transform, opacity" }}
         >
           {/* Header */}
@@ -275,7 +275,20 @@ export function ChatWidget({ open, onClose, mascotKey, isAuthed }: ChatWidgetPro
                           : "bg-white text-ink shadow-[2px_2px_0_0_#0a0a0c]"
                       }`}
                     >
-                      {msg.content || (msg.streaming ? <span className="animate-pulse">…</span> : null)}
+                      {msg.content ? (
+                        <>
+                          {msg.content}
+                          {msg.streaming && (
+                            <span className="inline-block w-[2px] h-[1em] bg-current ml-0.5 align-middle animate-[blink_0.8s_step-end_infinite]" />
+                          )}
+                        </>
+                      ) : (
+                        <span className="flex gap-1 items-center h-5">
+                          <span className="size-1.5 rounded-full bg-current animate-bounce [animation-delay:0ms]" />
+                          <span className="size-1.5 rounded-full bg-current animate-bounce [animation-delay:150ms]" />
+                          <span className="size-1.5 rounded-full bg-current animate-bounce [animation-delay:300ms]" />
+                        </span>
+                      )}
                     </div>
                   )}
 
