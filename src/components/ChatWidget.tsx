@@ -35,6 +35,7 @@ export function ChatWidget({ open, onClose, mascotKey, isAuthed }: ChatWidgetPro
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   // Tracks whether the greeting has been shown so clearing doesn't re-trigger it
@@ -219,7 +220,7 @@ export function ChatWidget({ open, onClose, mascotKey, isAuthed }: ChatWidgetPro
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 24, scale: 0.95 }}
           transition={{ type: "spring", stiffness: 320, damping: 28 }}
-          className="fixed bottom-36 right-6 z-[101] w-[420px] max-h-[640px] flex flex-col bg-white border-4 border-ink shadow-pop-lg"
+          className={`fixed bottom-36 right-6 z-[101] flex flex-col bg-white border-4 border-ink shadow-pop-lg transition-all duration-300 ${expanded ? "w-[680px] max-h-[80vh]" : "w-[420px] max-h-[640px]"}`}
           style={{ willChange: "transform, opacity" }}
         >
           {/* Header */}
@@ -227,13 +228,21 @@ export function ChatWidget({ open, onClose, mascotKey, isAuthed }: ChatWidgetPro
             <div className="font-display text-sm uppercase leading-tight">
               Chat with {mascot.name}
             </div>
-            <div className="ml-auto flex gap-2">
+            <div className="ml-auto flex items-center gap-3">
               <button
                 onClick={handleClear}
                 className="text-xs font-bold text-ink/50 hover:text-ink transition-colors"
                 title="Clear chat"
               >
                 Clear
+              </button>
+              <button
+                onClick={() => setExpanded((e) => !e)}
+                className="text-sm text-ink/40 hover:text-ink transition-colors leading-none"
+                aria-label={expanded ? "Shrink chat" : "Expand chat"}
+                title={expanded ? "Shrink" : "Expand"}
+              >
+                {expanded ? "⊟" : "⊞"}
               </button>
               <button
                 onClick={onClose}
@@ -348,13 +357,35 @@ export function ChatWidget({ open, onClose, mascotKey, isAuthed }: ChatWidgetPro
                 disabled={busy}
                 className="flex-1 px-3 py-3 text-sm bg-white text-ink placeholder:text-ink/30 outline-none disabled:opacity-50"
               />
-              <button
-                onClick={() => void send()}
-                disabled={busy || !input.trim()}
-                className="px-4 py-3 bg-magenta text-white font-bold text-sm border-l-4 border-ink hover:bg-ink transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {busy ? "…" : "→"}
-              </button>
+              {busy ? (
+                <button
+                  onClick={() => {
+                    abortRef.current?.abort();
+                    abortRef.current = null;
+                    setBusy(false);
+                    setMessages((prev) => {
+                      const next = [...prev];
+                      if (next[next.length - 1]?.streaming) {
+                        next[next.length - 1] = { ...next[next.length - 1], streaming: false };
+                      }
+                      return next;
+                    });
+                  }}
+                  className="px-4 py-3 bg-ink text-white font-bold text-sm border-l-4 border-ink hover:bg-magenta transition-colors"
+                  aria-label="Stop generating"
+                  title="Stop"
+                >
+                  ⏹
+                </button>
+              ) : (
+                <button
+                  onClick={() => void send()}
+                  disabled={!input.trim()}
+                  className="px-4 py-3 bg-magenta text-white font-bold text-sm border-l-4 border-ink hover:bg-ink transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  →
+                </button>
+              )}
             </div>
           )}
         </motion.div>
