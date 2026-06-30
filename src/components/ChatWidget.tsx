@@ -37,6 +37,8 @@ export function ChatWidget({ open, onClose, mascotKey, isAuthed }: ChatWidgetPro
   const [busy, setBusy] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  // Tracks whether the greeting has been shown so clearing doesn't re-trigger it
+  const greetedRef = useRef(false);
   const mascot = MASCOTS[mascotKey];
 
   // Scroll to bottom on new messages
@@ -44,9 +46,10 @@ export function ChatWidget({ open, onClose, mascotKey, isAuthed }: ChatWidgetPro
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Greet on first open
+  // Greet once on first open — never again after that (even after clear)
   useEffect(() => {
-    if (open && messages.length === 0 && isAuthed) {
+    if (open && isAuthed && !greetedRef.current) {
+      greetedRef.current = true;
       setMessages([
         {
           role: "assistant",
@@ -54,7 +57,15 @@ export function ChatWidget({ open, onClose, mascotKey, isAuthed }: ChatWidgetPro
         },
       ]);
     }
-  }, [open, isAuthed, mascot.name, messages.length]);
+  }, [open, isAuthed, mascot.name]);
+
+  const handleClear = () => {
+    // Abort any in-flight request so the previous stream stops writing
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setBusy(false);
+    setMessages([]);
+  };
 
   const send = useCallback(async () => {
     const text = input.trim();
@@ -218,7 +229,7 @@ export function ChatWidget({ open, onClose, mascotKey, isAuthed }: ChatWidgetPro
             </div>
             <div className="ml-auto flex gap-2">
               <button
-                onClick={() => setMessages([])}
+                onClick={handleClear}
                 className="text-xs font-bold text-ink/50 hover:text-ink transition-colors"
                 title="Clear chat"
               >

@@ -68,9 +68,14 @@ function buildSpecialist(opts: {
 
 // ── Supervisor ────────────────────────────────────────────────────────────────
 
+export interface UserContext {
+  username: string;
+}
+
 export function buildSupervisor(
   mascotKey: MascotKey,
   onCards: (cards: PromptCard[]) => void,
+  userCtx?: UserContext,
 ): AgentExecutor {
   const chatTools = buildChatTools(onCards);
 
@@ -143,11 +148,12 @@ export function buildSupervisor(
   ];
 
   const persona = MASCOT_PERSONAS[mascotKey];
+  const userLine = userCtx ? `\nThe user's username is "${userCtx.username}". Use their name naturally in conversation.` : "";
 
   const supervisorPrompt = ChatPromptTemplate.fromMessages([
     [
       "system",
-      `${persona}
+      `${persona}${userLine}
 
 You are the AI assistant for PromptStar. You can handle any conversation — casual chat, questions, requests — in your persona voice.
 

@@ -79,11 +79,26 @@ export const Route = createFileRoute("/api/chat")({
               const mascotKey = (user.mascot ?? "nova") as MascotKey;
               const supervisor = buildSupervisor(mascotKey, (cards) => {
                 collectedCards.push(...cards);
-              });
+              }, { username: user.username });
 
-              // Split history and latest input
-              const history = messages.slice(0, -1);
+              // ── Context window management ─────────────────────────────────
+              // Keep at most 10 prior turns (20 messages) to stay well within
+              // gpt-4o's context budget and bound per-request cost.
+              // Strategy: always keep the first exchange (sets the conversation
+              // tone) + the most recent N-1 turns so nothing feels abrupt.
+              const MAX_HISTORY_TURNS = 10; // pairs of user+assistant
+              const allHistory = messages.slice(0, -1);
               const lastMsg = messages[messages.length - 1];
+
+              let history: ChatMessage[];
+              if (allHistory.length <= MAX_HISTORY_TURNS * 2) {
+                history = allHistory;
+              } else {
+                // Keep first turn (greeting exchange) + most recent turns
+                const head = allHistory.slice(0, 2);
+                const tail = allHistory.slice(-(MAX_HISTORY_TURNS * 2 - 2));
+                history = [...head, ...tail];
+              }
 
               // Light gpt-4o-mini call: rephrases the user's query into a clear
               // instruction and produces an "I'll…" intent label for the UI chip.
