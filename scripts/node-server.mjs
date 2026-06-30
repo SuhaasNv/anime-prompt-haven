@@ -103,7 +103,15 @@ function toWebRequest(req) {
 /** Write a Web Response to a Node ServerResponse. */
 async function sendWebResponse(res, webRes) {
   res.statusCode = webRes.status;
-  webRes.headers.forEach((value, key) => res.setHeader(key, value));
+  // Headers.forEach folds multiple Set-Cookie into one comma-joined value, which
+  // corrupts cookies (Expires dates contain commas). Emit them as separate headers.
+  const setCookies =
+    typeof webRes.headers.getSetCookie === "function" ? webRes.headers.getSetCookie() : [];
+  webRes.headers.forEach((value, key) => {
+    if (key.toLowerCase() === "set-cookie") return;
+    res.setHeader(key, value);
+  });
+  if (setCookies.length > 0) res.setHeader("Set-Cookie", setCookies);
   if (webRes.body) {
     Readable.fromWeb(webRes.body).pipe(res);
   } else {

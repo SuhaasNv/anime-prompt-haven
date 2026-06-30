@@ -59,8 +59,11 @@ const MOODS = [
 export const Route = createFileRoute("/auth")({
   // `mode` is optional so links can navigate to "/auth" without specifying it
   // (defaults to sign-in); only the signup CTA passes `mode: "signup"`.
-  validateSearch: (search: Record<string, unknown>): { mode?: "signin" | "signup" } => ({
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { mode?: "signin" | "signup"; error?: string } => ({
     mode: search.mode === "signup" ? "signup" : "signin",
+    error: typeof search.error === "string" ? search.error : undefined,
   }),
   head: () => ({
     meta: [
@@ -73,17 +76,27 @@ export const Route = createFileRoute("/auth")({
 
 type Mode = "signin" | "signup";
 
+const OAUTH_ERROR_MESSAGES: Record<string, string> = {
+  google_unavailable: "Google sign-in isn't available right now.",
+  google_denied: "Google sign-in was cancelled.",
+  google_state: "Google sign-in expired or was invalid. Please try again.",
+  google_rate: "Too many sign-in attempts. Please wait a few minutes and try again.",
+  google_failed: "Couldn't complete Google sign-in. Please try again.",
+};
+
 function AuthPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const reduceMotion = useReducedMotion();
-  const { mode: initialMode } = Route.useSearch();
+  const { mode: initialMode, error: oauthErrorCode } = Route.useSearch();
   const [mode, setMode] = useState<Mode>(initialMode ?? "signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(
+    oauthErrorCode ? (OAUTH_ERROR_MESSAGES[oauthErrorCode] ?? "Google sign-in failed. Please try again.") : null,
+  );
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [exprIndex, setExprIndex] = useState(0);
@@ -381,9 +394,18 @@ function AuthPage() {
             <div className="flex-1 h-0.5 bg-ink/20" />
           </div>
 
-          <button className="w-full bg-white text-ink py-3 font-bold uppercase border-2 border-ink hover:bg-ink hover:text-white transition-colors">
+          <a
+            href="/api/auth/google"
+            className="w-full flex items-center justify-center gap-2 bg-white text-ink py-3 font-bold uppercase border-2 border-ink hover:bg-ink hover:text-white transition-colors"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1Z" />
+              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23Z" />
+              <path fill="#FBBC05" d="M5.84 14.1a6.6 6.6 0 0 1 0-4.2V7.06H2.18a11 11 0 0 0 0 9.88l3.66-2.84Z" />
+              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38Z" />
+            </svg>
             Continue with Google
-          </button>
+          </a>
 
           <p className="text-center mt-6 text-sm">
             {mode === "signin" ? "New here?" : "Already have an account?"}{" "}

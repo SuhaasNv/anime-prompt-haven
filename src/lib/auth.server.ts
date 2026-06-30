@@ -8,7 +8,7 @@ import { getDb } from "./db.server";
 const SESSION_COOKIE = "promptstar_session";
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days (financial system best practice)
 
-export type Mascot = "nova" | "comet";
+export type Mascot = "nova" | "comet" | "raven" | "vex" | "pixel";
 
 export type SessionUser = {
   id: string;
@@ -19,7 +19,15 @@ export type SessionUser = {
   avatarUrl: string | null;
 };
 
-export async function createSession(userId: string, remember = true): Promise<void> {
+/**
+ * Insert a session row and return its token + expiry. Does NOT set a cookie —
+ * callers that run inside a server function use `createSession`; callers that
+ * build their own `Response` (OAuth callback routes) use this plus
+ * `buildSessionSetCookie`.
+ */
+export async function createSessionToken(
+  userId: string,
+): Promise<{ token: string; expiresAt: Date }> {
   const token = randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
 
@@ -27,6 +35,26 @@ export async function createSession(userId: string, remember = true): Promise<vo
     "INSERT INTO sessions (token, user_id, expires_at) VALUES ($1, $2, $3)",
     [token, userId, expiresAt],
   );
+
+  return { token, expiresAt };
+}
+
+/** Serialize the session cookie as a `Set-Cookie` header value for raw Responses. */
+export function buildSessionSetCookie(token: string, expiresAt: Date, remember = true): string {
+  const parts = [
+    `${SESSION_COOKIE}=${token}`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Strict",
+  ];
+  if (process.env.NODE_ENV === "production") parts.push("Secure");
+  // "Remember me" off → session cookie (cleared on browser close); DB row still 7 days.
+  if (remember) parts.push(`Expires=${expiresAt.toUTCString()}`);
+  return parts.join("; ");
+}
+
+export async function createSession(userId: string, remember = true): Promise<void> {
+  const { token, expiresAt } = await createSessionToken(userId);
 
   setCookie(SESSION_COOKIE, token, {
     httpOnly: true,

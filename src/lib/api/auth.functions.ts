@@ -2,14 +2,14 @@ import { createServerFn } from "@tanstack/react-start";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 
-import { createSession, destroySession, getSessionUser } from "../auth.server";
+import { createSession, destroySession, getSessionUser, type Mascot } from "../auth.server";
 import { getDb } from "../db.server";
 import { checkRateLimit } from "../rate-limit.server";
 import { sanitize } from "../sanitize";
 import { validateAndNormalizeAvatar } from "../image-validation.server";
 
 const PASSWORD_MIN_LENGTH = 8;
-const MASCOT_VALUES = ["nova", "comet"] as const;
+const MASCOT_VALUES = ["nova", "comet", "raven", "vex", "pixel"] as const;
 const MAX_AVATAR_IMAGE_LENGTH = 4_000_000;
 
 const SIGNIN_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
@@ -108,14 +108,15 @@ export const signIn = createServerFn({ method: "POST" })
     checkRateLimit(rateLimitKey, SIGNIN_RATE_LIMIT_MAX_ATTEMPTS, SIGNIN_RATE_LIMIT_WINDOW_MS);
 
     const db = getDb();
-    const result = await db.query<{ id: string; password_hash: string }>(
+    const result = await db.query<{ id: string; password_hash: string | null }>(
       "SELECT id, password_hash FROM users WHERE email = $1",
       [data.email],
     );
     const user = result.rows[0];
 
-    // Always run bcrypt.compare, even when no user was found, so the
-    // response time doesn't reveal whether the email is registered.
+    // Always run bcrypt.compare, even when no user was found OR the account is
+    // Google-only (null password_hash), so response time doesn't reveal whether
+    // the email is registered, and passwordless accounts can't be password-signed-in.
     const valid = await bcrypt.compare(data.password, user?.password_hash ?? DUMMY_PASSWORD_HASH);
     if (!user || !valid) {
       throw new Error("Invalid email or password.");
@@ -138,7 +139,7 @@ export interface UserProfile {
   id: string;
   username: string;
   bio: string | null;
-  mascot: "nova" | "comet";
+  mascot: Mascot;
   avatarUrl: string | null;
   createdAt: string;
   listingsCount: number;
@@ -154,7 +155,7 @@ export const getUserProfile = createServerFn({ method: "GET" })
       id: string;
       username: string;
       bio: string | null;
-      mascot: "nova" | "comet";
+      mascot: Mascot;
       avatar_url: string | null;
       created_at: string;
       listings_count: string;

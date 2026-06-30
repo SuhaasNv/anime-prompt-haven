@@ -21,5 +21,8 @@ export function getServerConfig() {
     nodeEnv: process.env.NODE_ENV,
     databaseUrl: process.env.DATABASE_URL,
     openaiApiKey: process.env.OPENAI_API_KEY,
+    googleClientId: process.env.GOOGLE_CLIENT_ID,
+    googleClientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    appBaseUrl: process.env.APP_BASE_URL,
   };
 }
