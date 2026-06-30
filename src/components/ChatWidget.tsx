@@ -63,19 +63,17 @@ export function ChatWidget({ open, onClose, mascotKey, isAuthed }: ChatWidgetPro
     setInput("");
     setBusy(true);
 
-    // Append user message
-    setMessages((prev) => [...prev, { role: "user", content: text }]);
-
-    // Placeholder assistant message
-    const assistantIdx = messages.length + 1;
+    // Append user message + streaming placeholder
     setMessages((prev) => [
       ...prev,
+      { role: "user", content: text },
       { role: "assistant", content: "", streaming: true, toolChips: [] },
     ]);
 
     abortRef.current = new AbortController();
 
     try {
+      // Build history excluding the two messages we just appended (user + placeholder)
       const history = messages.map((m) => ({ role: m.role, content: m.content }));
       const res = await fetch("/api/chat", {
         method: "POST",
@@ -171,20 +169,17 @@ export function ChatWidget({ open, onClose, mascotKey, isAuthed }: ChatWidgetPro
           }
         }
       }
-      // Suppress unused variable lint warning — assistantIdx tracks position conceptually
-      void assistantIdx;
     } catch (err) {
-      if ((err as Error).name !== "AbortError") {
-        setMessages((prev) => {
-          const next = [...prev];
-          next[next.length - 1] = {
-            role: "assistant",
-            content: "Something went wrong. Please try again.",
-            streaming: false,
-          };
-          return next;
-        });
-      }
+      setMessages((prev) => {
+        const next = [...prev];
+        const isAbort = (err as Error).name === "AbortError";
+        next[next.length - 1] = {
+          role: "assistant",
+          content: isAbort ? "" : "Something went wrong. Please try again.",
+          streaming: false,
+        };
+        return next;
+      });
     } finally {
       setBusy(false);
       abortRef.current = null;

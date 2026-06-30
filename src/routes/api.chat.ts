@@ -14,6 +14,7 @@ import {
 } from "@/lib/agents/chatAgents.server";
 import type { PromptCard } from "@/lib/agents/chatTools.server";
 import type { MascotKey } from "@/lib/mascots";
+import { logChatEvent } from "@/lib/monitoring.server";
 
 export const Route = createFileRoute("/api/chat")({
   server: {
@@ -60,14 +61,18 @@ export const Route = createFileRoute("/api/chat")({
         // ── Build SSE stream ─────────────────────────────────────────────────
         const encoder = new TextEncoder();
         const collectedCards: PromptCard[] = [];
+        const toolCallsMade: string[] = [];
+        const startTime = Date.now();
 
-        const body = new ReadableStream({
+        const responseBody = new ReadableStream({
           async start(controller) {
             function emit(event: string, data: unknown) {
               controller.enqueue(
                 encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`),
               );
             }
+
+            let errorMsg: string | undefined;
 
             try {
               const mascotKey = (user.mascot ?? "nova") as MascotKey;
@@ -87,26 +92,33 @@ export const Route = createFileRoute("/api/chat")({
               for await (const evt of eventStream) {
                 // Tool activity chips
                 if (evt.event === "on_tool_start") {
-                  const label =
-                    TOOL_ACTIVITY_LABELS[evt.name ?? ""] ?? `Calling ${evt.name ?? "tool"}…`;
+                  const name = evt.name ?? "";
+                  toolCallsMade.push(name);
+                  const label = TOOL_ACTIVITY_LABELS[name] ?? `Calling ${name}…`;
                   emit("tool", { label });
                 }
 
-                // Token stream (supervisor's final synthesis)
+                // Token stream — supervisor's final synthesis only.
+                // Specialist tokens are isolated via callbacks:[] in runSpecialist.
                 if (evt.event === "on_chat_model_stream") {
                   const chunk = evt.data?.chunk;
-                  const text: unknown =
-                    chunk?.message?.content ??
-                    chunk?.content ??
-                    (Array.isArray(chunk?.message?.content)
-                      ? chunk.message.content
-                          .filter((c: { type: string }) => c.type === "text")
-                          .map((c: { text: string }) => c.text)
-                          .join("")
-                      : "");
-                  if (typeof text === "string" && text) {
-                    emit("token", { text });
+                  // AIMessageChunk.content is string | ContentBlock[]
+                  let text = "";
+                  if (typeof chunk?.content === "string") {
+                    text = chunk.content;
+                  } else if (Array.isArray(chunk?.content)) {
+                    for (const block of chunk.content as unknown[]) {
+                      if (
+                        block !== null &&
+                        typeof block === "object" &&
+                        (block as Record<string, unknown>).type === "text" &&
+                        typeof (block as Record<string, unknown>).text === "string"
+                      ) {
+                        text += (block as Record<string, unknown>).text as string;
+                      }
+                    }
                   }
+                  if (text) emit("token", { text });
                 }
               }
 
@@ -117,15 +129,25 @@ export const Route = createFileRoute("/api/chat")({
 
               emit("done", {});
             } catch (err) {
-              const message = err instanceof Error ? err.message : "An error occurred";
-              emit("error", { message });
+              errorMsg = err instanceof Error ? err.message : "An error occurred";
+              emit("error", { message: errorMsg });
             } finally {
               controller.close();
+
+              // Fire-and-forget monitoring write (non-blocking)
+              void logChatEvent({
+                userId: user.id,
+                mascot: user.mascot,
+                durationMs: Date.now() - startTime,
+                toolCalls: toolCallsMade,
+                cardCount: collectedCards.length,
+                error: errorMsg,
+              });
             }
           },
         });
 
-        return new Response(body, {
+        return new Response(responseBody, {
           headers: {
             "Content-Type": "text/event-stream",
             "Cache-Control": "no-cache, no-transform",

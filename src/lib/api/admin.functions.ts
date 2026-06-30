@@ -881,3 +881,72 @@ export const deleteUserAccount = createServerFn({ method: "POST" })
 
     await logAdminAction(db, user.id, "user_deleted", data.userId, `Reason: ${data.reason}`);
   });
+
+// ── Chat monitoring ────────────────────────────────────────────────────────────
+
+export interface ChatStats24h {
+  total: number;
+  errors: number;
+  avgMs: number;
+}
+
+export interface ChatMetricsResult {
+  volume14d: { date: string; count: number }[];
+  toolUsage: { tool: string; count: number }[];
+  topUsers: { username: string; count: number }[];
+  stats24h: ChatStats24h;
+}
+
+export const getChatMetrics = createServerFn({ method: "GET" }).handler(
+  async (): Promise<ChatMetricsResult> => {
+    const user = await getSessionUser();
+    if (!user?.is_admin) throw new Error("Unauthorized");
+
+    const db = getDb();
+
+    const [vol, tools, users, stats] = await Promise.all([
+      db.query<{ date: string; count: string }>(
+        `SELECT DATE(created_at)::text AS date, COUNT(*)::text AS count
+         FROM chat_logs
+         WHERE created_at > NOW() - INTERVAL '14 days'
+         GROUP BY DATE(created_at)
+         ORDER BY date`,
+      ),
+      db.query<{ tool: string; count: string }>(
+        `SELECT unnest(tool_calls) AS tool, COUNT(*)::text AS count
+         FROM chat_logs
+         WHERE created_at > NOW() - INTERVAL '7 days'
+         GROUP BY tool
+         ORDER BY count DESC
+         LIMIT 10`,
+      ),
+      db.query<{ username: string; count: string }>(
+        `SELECT u.username, COUNT(*)::text AS count
+         FROM chat_logs cl
+         JOIN users u ON u.id = cl.user_id
+         WHERE cl.created_at > NOW() - INTERVAL '7 days'
+         GROUP BY u.username
+         ORDER BY count DESC
+         LIMIT 8`,
+      ),
+      db.query<{ total: string; errors: string; avg_ms: string }>(
+        `SELECT COUNT(*)::text AS total,
+                COUNT(error)::text AS errors,
+                COALESCE(AVG(duration_ms), 0)::text AS avg_ms
+         FROM chat_logs
+         WHERE created_at > NOW() - INTERVAL '24 hours'`,
+      ),
+    ]);
+
+    return {
+      volume14d: vol.rows.map((r) => ({ date: r.date, count: Number(r.count) })),
+      toolUsage: tools.rows.map((r) => ({ tool: r.tool, count: Number(r.count) })),
+      topUsers: users.rows.map((r) => ({ username: r.username, count: Number(r.count) })),
+      stats24h: {
+        total: Number(stats.rows[0]?.total ?? 0),
+        errors: Number(stats.rows[0]?.errors ?? 0),
+        avgMs: Math.round(Number(stats.rows[0]?.avg_ms ?? 0)),
+      },
+    };
+  },
+);

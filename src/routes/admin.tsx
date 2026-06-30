@@ -20,6 +20,7 @@ import { ReportsTab } from "@/components/admin/ReportsTab";
 import { ListingsTab } from "@/components/admin/ListingsTab";
 import { UsersTab } from "@/components/admin/UsersTab";
 import { FinancialTab } from "@/components/admin/FinancialTab";
+import { ChatTab } from "@/components/admin/ChatTab";
 import { StatCard } from "@/components/ui/StatCard";
 import { DonutChart } from "@/components/ui/charts/DonutChart";
 import { BarChart } from "@/components/ui/charts/BarChart";
@@ -71,7 +72,8 @@ type AdminTab =
   | "financial"
   | "queue"
   | "audit"
-  | "credits";
+  | "credits"
+  | "chat";
 
 const TYPE_LABELS: Record<string, string> = {
   bonus: "Bonus",
@@ -93,6 +95,7 @@ const NAV_ITEMS: { key: AdminTab; label: string; icon: string }[] = [
   { key: "queue", label: "Queue", icon: "⚠️" },
   { key: "audit", label: "Audit Log", icon: "🔍" },
   { key: "credits", label: "Transactions", icon: "✦" },
+  { key: "chat", label: "Chat Metrics", icon: "💬" },
 ];
 
 /** Bar-chart x labels: weekday letters from a YYYY-MM-DD date. */
@@ -599,6 +602,12 @@ function AdminDashboard() {
           ))}
           </div>
         </div>
+
+        {activeTab === "chat" && (
+          <div className="col-span-12 lg:col-span-9">
+            <ChatTab />
+          </div>
+        )}
       </main>
     </div>
   );

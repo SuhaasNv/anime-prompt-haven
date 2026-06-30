@@ -99,10 +99,16 @@ export function buildSupervisor(
     tools: [],
   });
 
-  // Wrap each specialist as a tool for the supervisor
+  // Wrap each specialist as a tool for the supervisor.
+  // Pass callbacks:[] to break AsyncLocalStorage propagation — without this,
+  // nested LLM tokens from specialists bleed into the parent streamEvents and
+  // produce garbled output in the chat stream.
   async function runSpecialist(executor: AgentExecutor, task: string): Promise<string> {
     try {
-      const result = await executor.invoke({ input: task, chat_history: [] });
+      const result = await executor.invoke(
+        { input: task, chat_history: [] },
+        { callbacks: [] },
+      );
       return typeof result.output === "string" ? result.output : JSON.stringify(result.output);
     } catch (err) {
       return `Error: ${err instanceof Error ? err.message : "specialist failed"}`;
