@@ -3,9 +3,14 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "@tanstack/react-router";
 
 import { createListing, listListings } from "@/lib/api/listings.functions";
-import { getListingAssistance, generateTitleFromImage, generateDescriptionFromImage } from "@/lib/api/ai.functions";
+import {
+  getListingAssistance,
+  generateTitleFromImage,
+  generateDescriptionFromImage,
+} from "@/lib/api/ai.functions";
 import { getCurrentUser } from "@/lib/api/auth.functions";
 import { CATEGORIES, MODELS } from "@/lib/mock-data";
+import { CoverCropModal } from "@/components/CoverCropModal";
 
 const LISTING_CATEGORIES = CATEGORIES.filter((c) => c !== "All");
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
@@ -30,6 +35,11 @@ export function ContributeModal({ open, onClose }: ContributeModalProps) {
   const [tagsInput, setTagsInput] = useState("");
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
   const [imageName, setImageName] = useState<string | null>(null);
+  // Raw (pre-crop) image kept so the creator can re-open the 4:3 crop tool and
+  // re-frame without re-selecting the file. `imageDataUrl` only holds the final
+  // cropped result that actually gets submitted.
+  const [rawImage, setRawImage] = useState<string | null>(null);
+  const [cropOpen, setCropOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<"draft" | "published">("published");
@@ -78,6 +88,8 @@ export function ContributeModal({ open, onClose }: ContributeModalProps) {
     setTagsInput("");
     setImageDataUrl(null);
     setImageName(null);
+    setRawImage(null);
+    setCropOpen(false);
     setError(null);
     setStatus("published");
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -170,7 +182,9 @@ export function ContributeModal({ open, onClose }: ContributeModalProps) {
           const { width, height } = await getImageDimensions(reader.result);
           if (width < MIN_IMAGE_WIDTH || height < MIN_IMAGE_HEIGHT) {
             setCheckingImage(false);
-            setError(`Image is too small — please upload at least ${MIN_IMAGE_WIDTH}x${MIN_IMAGE_HEIGHT}px.`);
+            setError(
+              `Image is too small — please upload at least ${MIN_IMAGE_WIDTH}x${MIN_IMAGE_HEIGHT}px.`,
+            );
             e.target.value = "";
             setImageDataUrl(null);
             setImageName(null);
@@ -178,7 +192,9 @@ export function ContributeModal({ open, onClose }: ContributeModalProps) {
           }
         } catch (err) {
           setCheckingImage(false);
-          setError(err instanceof Error ? err.message : "Couldn't read that image — try a different file.");
+          setError(
+            err instanceof Error ? err.message : "Couldn't read that image — try a different file.",
+          );
           e.target.value = "";
           setImageDataUrl(null);
           setImageName(null);
@@ -188,7 +204,9 @@ export function ContributeModal({ open, onClose }: ContributeModalProps) {
         const isNsfw = await checkImageForNSFW(reader.result);
         setCheckingImage(false);
         if (isNsfw) {
-          setError("⚠️ NSFW content detected. Please upload a different image that follows our community guidelines.");
+          setError(
+            "⚠️ NSFW content detected. Please upload a different image that follows our community guidelines.",
+          );
           e.target.value = "";
           setImageDataUrl(null);
           setImageName(null);
@@ -196,10 +214,29 @@ export function ContributeModal({ open, onClose }: ContributeModalProps) {
         }
         setError(null);
         setImageName(file.name);
-        setImageDataUrl(reader.result);
+        // Hand off to the 4:3 crop tool; the cropped result becomes the cover.
+        setRawImage(reader.result);
+        setImageDataUrl(null);
+        setCropOpen(true);
       }
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleCropConfirm = (cropped: string) => {
+    setImageDataUrl(cropped);
+    setCropOpen(false);
+  };
+
+  const handleCropCancel = () => {
+    setCropOpen(false);
+    // If they backed out before ever confirming a crop, clear the pending
+    // selection so the field reads "Click to upload" again.
+    if (!imageDataUrl) {
+      setRawImage(null);
+      setImageName(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
   };
 
   const handleGetAssistance = async () => {
@@ -301,7 +338,9 @@ export function ContributeModal({ open, onClose }: ContributeModalProps) {
     }
 
     if (status === "published" && activeListingCount >= 10) {
-      setError("You've reached the maximum of 10 published listings. Save this as a draft or remove another listing.");
+      setError(
+        "You've reached the maximum of 10 published listings. Save this as a draft or remove another listing.",
+      );
       return;
     }
 
@@ -343,330 +382,385 @@ export function ContributeModal({ open, onClose }: ContributeModalProps) {
   };
 
   return (
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[200] bg-ink/60 backdrop-blur-sm flex items-center justify-center p-4 md:p-6 overflow-y-auto"
-          onClick={handleClose}
-        >
+    <>
+      <AnimatePresence>
+        {open && (
           <motion.div
-            initial={{ y: 40, opacity: 0, scale: 0.95 }}
-            animate={{ y: 0, opacity: 1, scale: 1 }}
-            exit={{ y: 40, opacity: 0, scale: 0.95 }}
-            transition={{ type: "spring", stiffness: 280, damping: 24 }}
-            onClick={(e) => e.stopPropagation()}
-            className="bg-white border-4 border-ink shadow-pop-lg w-full max-w-lg p-6 my-8"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200] bg-ink/60 backdrop-blur-sm flex items-center justify-center p-4 md:p-6 overflow-y-auto"
+            onClick={handleClose}
           >
-            <div className="flex justify-between items-start mb-4 border-b-2 border-ink pb-3">
-              <div>
-                <h2 className="font-display text-2xl uppercase leading-tight">Contribute a Prompt</h2>
-                <p className="text-xs text-ink/60 mt-1">List your creation on the market for other creators.</p>
-              </div>
-              <button
-                onClick={handleClose}
-                className="size-8 bg-accent-yellow border-2 border-ink font-bold hover:bg-accent-orange transition-colors shrink-0"
-                aria-label="Close"
-              >
-                ×
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="text-xs font-bold uppercase tracking-widest block mb-1">
-                  Cover image <span className="text-magenta">*</span>
-                  <span className="text-ink/40 normal-case font-normal tracking-normal"> — at least {MIN_IMAGE_WIDTH}x{MIN_IMAGE_HEIGHT}px, under 4MB</span>
-                </label>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  required
-                  onChange={handleImageChange}
-                  className="hidden"
-                  id="contribute-image"
-                />
-                <label
-                  htmlFor="contribute-image"
-                  className={`flex items-center gap-3 border-2 border-dashed p-3 transition-colors ${
-                    checkingImage
-                      ? "border-orange cursor-wait text-orange"
-                      : "border-ink cursor-pointer hover:border-magenta hover:text-magenta"
-                  }`}
-                >
-                  {imageDataUrl ? (
-                    <img src={imageDataUrl} alt="Preview" className="size-16 object-cover border-2 border-ink shrink-0" />
-                  ) : (
-                    <span className="size-16 border-2 border-ink flex items-center justify-center text-2xl shrink-0 bg-secondary">🖼️</span>
-                  )}
-                  <span className="text-sm font-bold uppercase truncate">
-                    {checkingImage ? "Checking image..." : (imageName ?? "Click to upload an image — required")}
-                  </span>
-                </label>
-
-                {/* Marketplace preview — mirrors PromptCard exactly (4:3 box, blurred
-                    backdrop, contained image) so creators see how their upload will
-                    actually be framed on a card before publishing. */}
-                {imageDataUrl && (
-                  <div className="mt-3">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-ink/60 block mb-1">
-                      Marketplace preview
-                    </span>
-                    <div className="w-full max-w-[220px] aspect-[4/3] overflow-hidden border-2 border-ink relative bg-ink">
-                      <img
-                        src={imageDataUrl}
-                        alt=""
-                        aria-hidden="true"
-                        className="absolute inset-0 w-full h-full object-cover scale-110 blur-xl brightness-90"
-                      />
-                      <img
-                        src={imageDataUrl}
-                        alt="Marketplace preview"
-                        className="relative w-full h-full object-contain"
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <label className="text-xs font-bold uppercase tracking-widest block mb-1">Title</label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    required
-                    minLength={2}
-                    maxLength={80}
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="Golden Hour Product Shot"
-                    className="w-full bg-white border-2 border-ink p-2 pr-10 font-bold text-sm focus:outline-none focus:ring-4 focus:ring-magenta/30"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleGenerateTitle}
-                    disabled={generatingTitle || !imageDataUrl}
-                    title="Generate title from image"
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-magenta text-xl hover:scale-125 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    ✨
-                  </button>
+            <motion.div
+              initial={{ y: 40, opacity: 0, scale: 0.95 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: 40, opacity: 0, scale: 0.95 }}
+              transition={{ type: "spring", stiffness: 280, damping: 24 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white border-4 border-ink shadow-pop-lg w-full max-w-lg p-6 my-8"
+            >
+              <div className="flex justify-between items-start mb-4 border-b-2 border-ink pb-3">
+                <div>
+                  <h2 className="font-display text-2xl uppercase leading-tight">
+                    Contribute a Prompt
+                  </h2>
+                  <p className="text-xs text-ink/60 mt-1">
+                    List your creation on the market for other creators.
+                  </p>
                 </div>
+                <button
+                  onClick={handleClose}
+                  className="size-8 bg-accent-yellow border-2 border-ink font-bold hover:bg-accent-orange transition-colors shrink-0"
+                  aria-label="Close"
+                >
+                  ×
+                </button>
               </div>
 
-              <div>
-                <label className="text-xs font-bold uppercase tracking-widest block mb-1">Description</label>
-                <div className="relative">
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-widest block mb-1">
+                    Cover image <span className="text-magenta">*</span>
+                    <span className="text-ink/40 normal-case font-normal tracking-normal">
+                      {" "}
+                      — at least {MIN_IMAGE_WIDTH}x{MIN_IMAGE_HEIGHT}px, under 4MB
+                    </span>
+                  </label>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    required
+                    onChange={handleImageChange}
+                    className="hidden"
+                    id="contribute-image"
+                  />
+                  <label
+                    htmlFor="contribute-image"
+                    className={`flex items-center gap-3 border-2 border-dashed p-3 transition-colors ${
+                      checkingImage
+                        ? "border-orange cursor-wait text-orange"
+                        : "border-ink cursor-pointer hover:border-magenta hover:text-magenta"
+                    }`}
+                  >
+                    {imageDataUrl ? (
+                      <img
+                        src={imageDataUrl}
+                        alt="Preview"
+                        className="size-16 object-cover border-2 border-ink shrink-0"
+                      />
+                    ) : (
+                      <span className="size-16 border-2 border-ink flex items-center justify-center text-2xl shrink-0 bg-secondary">
+                        🖼️
+                      </span>
+                    )}
+                    <span className="text-sm font-bold uppercase truncate">
+                      {checkingImage
+                        ? "Checking image..."
+                        : (imageName ?? "Click to upload an image — required")}
+                    </span>
+                  </label>
+
+                  {/* Marketplace preview — the cropped 4:3 cover exactly as it
+                    will appear on a card. "Adjust crop" reopens the tool. */}
+                  {imageDataUrl && (
+                    <div className="mt-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-ink/60">
+                          Marketplace preview
+                        </span>
+                        {rawImage && (
+                          <button
+                            type="button"
+                            onClick={() => setCropOpen(true)}
+                            className="text-[10px] font-bold uppercase tracking-widest text-magenta hover:underline"
+                          >
+                            Adjust crop
+                          </button>
+                        )}
+                      </div>
+                      <div className="w-full max-w-[220px] aspect-[4/3] overflow-hidden border-2 border-ink relative bg-ink">
+                        <img
+                          src={imageDataUrl}
+                          alt="Marketplace preview"
+                          className="relative w-full h-full object-cover"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-widest block mb-1">
+                    Title
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      required
+                      minLength={2}
+                      maxLength={80}
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      placeholder="Golden Hour Product Shot"
+                      className="w-full bg-white border-2 border-ink p-2 pr-10 font-bold text-sm focus:outline-none focus:ring-4 focus:ring-magenta/30"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleGenerateTitle}
+                      disabled={generatingTitle || !imageDataUrl}
+                      title="Generate title from image"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-magenta text-xl hover:scale-125 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      ✨
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-widest block mb-1">
+                    Description
+                  </label>
+                  <div className="relative">
+                    <textarea
+                      required
+                      minLength={10}
+                      maxLength={280}
+                      rows={2}
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      placeholder="Studio product photography with soft golden-hour lighting and a glossy reflective surface."
+                      className="w-full bg-white border-2 border-ink p-2 pr-10 font-medium text-sm focus:outline-none focus:ring-4 focus:ring-magenta/30 resize-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleGenerateDescription}
+                      disabled={generatingDescription || !imageDataUrl}
+                      title="Generate description from image"
+                      className="absolute right-2 bottom-2 text-magenta text-xl hover:scale-125 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      ✨
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-widest block mb-1">
+                    Prompt body
+                  </label>
                   <textarea
                     required
                     minLength={10}
-                    maxLength={280}
-                    rows={2}
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder="Studio product photography with soft golden-hour lighting and a glossy reflective surface."
-                    className="w-full bg-white border-2 border-ink p-2 pr-10 font-medium text-sm focus:outline-none focus:ring-4 focus:ring-magenta/30 resize-none"
+                    maxLength={2000}
+                    rows={3}
+                    value={body}
+                    onChange={(e) => setBody(e.target.value)}
+                    placeholder="product on a marble pedestal, soft golden-hour rim light, glossy reflections, shallow depth of field…"
+                    className="w-full bg-white border-2 border-ink p-2 font-mono text-xs focus:outline-none focus:ring-4 focus:ring-magenta/30"
                   />
-                  <button
-                    type="button"
-                    onClick={handleGenerateDescription}
-                    disabled={generatingDescription || !imageDataUrl}
-                    title="Generate description from image"
-                    className="absolute right-2 bottom-2 text-magenta text-xl hover:scale-125 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    ✨
-                  </button>
                 </div>
-              </div>
 
-              <div>
-                <label className="text-xs font-bold uppercase tracking-widest block mb-1">Prompt body</label>
-                <textarea
-                  required
-                  minLength={10}
-                  maxLength={2000}
-                  rows={3}
-                  value={body}
-                  onChange={(e) => setBody(e.target.value)}
-                  placeholder="product on a marble pedestal, soft golden-hour rim light, glossy reflections, shallow depth of field…"
-                  className="w-full bg-white border-2 border-ink p-2 font-mono text-xs focus:outline-none focus:ring-4 focus:ring-magenta/30"
-                />
-              </div>
-
-              {/* AI Assistance Button */}
-              <button
-                type="button"
-                onClick={handleGetAssistance}
-                disabled={gettingAssistance || !title || !description || !body}
-                className="w-full bg-holo-purple text-white py-2 font-display uppercase border-2 border-ink shadow-[2px_2px_0_0_#0a0a0c] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-              >
-                {gettingAssistance ? "✨ Getting suggestions…" : "✨ Get AI Suggestions"}
-              </button>
-
-              {/* Suggestions Display */}
-              {suggestions && (
-                <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="p-3 border-2 border-holo-purple bg-holo-purple/5 space-y-2"
+                {/* AI Assistance Button */}
+                <button
+                  type="button"
+                  onClick={handleGetAssistance}
+                  disabled={gettingAssistance || !title || !description || !body}
+                  className="w-full bg-holo-purple text-white py-2 font-display uppercase border-2 border-ink shadow-[2px_2px_0_0_#0a0a0c] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm"
                 >
-                  <h4 className="font-bold text-xs uppercase text-holo-purple">AI Suggestions</h4>
+                  {gettingAssistance ? "✨ Getting suggestions…" : "✨ Get AI Suggestions"}
+                </button>
 
-                  {/* Suggested Price */}
-                  <div className="text-xs">
-                    <span className="font-bold">Price: </span>
-                    <span className="text-holo-purple font-bold">{suggestions.suggestedPrice} ✦</span>
-                  </div>
+                {/* Suggestions Display */}
+                {suggestions && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="p-3 border-2 border-holo-purple bg-holo-purple/5 space-y-2"
+                  >
+                    <h4 className="font-bold text-xs uppercase text-holo-purple">AI Suggestions</h4>
 
-                  {/* Suggested Tags */}
-                  <div className="text-xs">
-                    <span className="font-bold">Tags: </span>
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {suggestions.suggestedTags.map((tag) => (
-                        <span key={tag} className="bg-holo-purple text-white px-2 py-0.5 text-[10px] font-bold uppercase">
-                          {tag}
-                        </span>
-                      ))}
+                    {/* Suggested Price */}
+                    <div className="text-xs">
+                      <span className="font-bold">Price: </span>
+                      <span className="text-holo-purple font-bold">
+                        {suggestions.suggestedPrice} ✦
+                      </span>
                     </div>
-                  </div>
 
-                  {/* Action Buttons */}
-                  <div className="flex gap-2 pt-2">
-                    <button
-                      type="button"
-                      onClick={applySuggestions}
-                      className="flex-1 bg-holo-purple text-white py-1 font-bold text-xs uppercase border border-holo-purple hover:bg-holo-purple/80 transition-colors"
-                    >
-                      Apply
-                    </button>
-                    <button
-                      type="button"
-                      onClick={rejectSuggestions}
-                      className="flex-1 bg-white text-holo-purple py-1 font-bold text-xs uppercase border border-holo-purple hover:bg-holo-purple/10 transition-colors"
-                    >
-                      Reject
-                    </button>
-                  </div>
-                </motion.div>
-              )}
+                    {/* Suggested Tags */}
+                    <div className="text-xs">
+                      <span className="font-bold">Tags: </span>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {suggestions.suggestedTags.map((tag) => (
+                          <span
+                            key={tag}
+                            className="bg-holo-purple text-white px-2 py-0.5 text-[10px] font-bold uppercase"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold uppercase tracking-widest block mb-1">Price (Credits)</label>
-                  <input
-                    type="number"
-                    required
-                    min={0}
-                    max={5}
-                    step="1"
-                    value={price}
-                    onChange={(e) => setPrice(e.target.value)}
-                    className="w-full bg-white border-2 border-ink p-2 font-bold text-sm focus:outline-none focus:ring-4 focus:ring-magenta/30"
-                  />
+                    {/* Action Buttons */}
+                    <div className="flex gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={applySuggestions}
+                        className="flex-1 bg-holo-purple text-white py-1 font-bold text-xs uppercase border border-holo-purple hover:bg-holo-purple/80 transition-colors"
+                      >
+                        Apply
+                      </button>
+                      <button
+                        type="button"
+                        onClick={rejectSuggestions}
+                        className="flex-1 bg-white text-holo-purple py-1 font-bold text-xs uppercase border border-holo-purple hover:bg-holo-purple/10 transition-colors"
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-bold uppercase tracking-widest block mb-1">
+                      Price (Credits)
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      min={0}
+                      max={5}
+                      step="1"
+                      value={price}
+                      onChange={(e) => setPrice(e.target.value)}
+                      className="w-full bg-white border-2 border-ink p-2 font-bold text-sm focus:outline-none focus:ring-4 focus:ring-magenta/30"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold uppercase tracking-widest block mb-1">
+                      Model
+                    </label>
+                    <select
+                      value={model}
+                      onChange={(e) => setModel(e.target.value as (typeof MODELS)[number])}
+                      className="w-full bg-white border-2 border-ink p-2 font-bold text-sm focus:outline-none focus:ring-4 focus:ring-magenta/30"
+                    >
+                      {MODELS.map((m) => (
+                        <option key={m} value={m}>
+                          {m}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
+
                 <div>
-                  <label className="text-xs font-bold uppercase tracking-widest block mb-1">Model</label>
+                  <label className="text-xs font-bold uppercase tracking-widest block mb-1">
+                    Category
+                  </label>
                   <select
-                    value={model}
-                    onChange={(e) => setModel(e.target.value as (typeof MODELS)[number])}
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
                     className="w-full bg-white border-2 border-ink p-2 font-bold text-sm focus:outline-none focus:ring-4 focus:ring-magenta/30"
                   >
-                    {MODELS.map((m) => (
-                      <option key={m} value={m}>{m}</option>
+                    {LISTING_CATEGORIES.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
                     ))}
                   </select>
                 </div>
-              </div>
 
-              <div>
-                <label className="text-xs font-bold uppercase tracking-widest block mb-1">Category</label>
-                <select
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                  className="w-full bg-white border-2 border-ink p-2 font-bold text-sm focus:outline-none focus:ring-4 focus:ring-magenta/30"
-                >
-                  {LISTING_CATEGORIES.map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-              </div>
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-widest block mb-1">
+                    Tags (comma-separated, up to 6)
+                  </label>
+                  <input
+                    type="text"
+                    value={tagsInput}
+                    onChange={(e) => setTagsInput(e.target.value)}
+                    placeholder="cyberpunk, neon, urban"
+                    className="w-full bg-white border-2 border-ink p-2 font-bold text-sm focus:outline-none focus:ring-4 focus:ring-magenta/30"
+                  />
+                </div>
 
-              <div>
-                <label className="text-xs font-bold uppercase tracking-widest block mb-1">Tags (comma-separated, up to 6)</label>
-                <input
-                  type="text"
-                  value={tagsInput}
-                  onChange={(e) => setTagsInput(e.target.value)}
-                  placeholder="cyberpunk, neon, urban"
-                  className="w-full bg-white border-2 border-ink p-2 font-bold text-sm focus:outline-none focus:ring-4 focus:ring-magenta/30"
-                />
-              </div>
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-widest block mb-2">
+                    Publish Status
+                  </label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setStatus("draft")}
+                      className={`flex-1 py-2 font-bold uppercase text-xs border-2 border-ink transition-colors ${
+                        status === "draft"
+                          ? "bg-ink text-white"
+                          : "bg-white text-ink hover:bg-ink/10"
+                      }`}
+                    >
+                      Draft
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setStatus("published")}
+                      className={`flex-1 py-2 font-bold uppercase text-xs border-2 border-ink transition-colors ${
+                        status === "published"
+                          ? "bg-ink text-white"
+                          : "bg-white text-ink hover:bg-ink/10"
+                      }`}
+                    >
+                      Publish
+                    </button>
+                  </div>
+                </div>
 
-              <div>
-                <label className="text-xs font-bold uppercase tracking-widest block mb-2">Publish Status</label>
-                <div className="flex gap-2">
+                {status === "published" && activeListingCount >= 10 && (
+                  <p className="text-xs font-bold text-magenta bg-magenta/10 p-2 border-l-4 border-magenta">
+                    ⚠️ You've reached 10 published listings. Switch to "Draft" to save for later, or
+                    remove a listing.
+                  </p>
+                )}
+
+                {error && <p className="text-xs font-bold text-magenta">{error}</p>}
+
+                <div className="flex gap-2 pt-1">
                   <button
-                    type="button"
-                    onClick={() => setStatus("draft")}
-                    className={`flex-1 py-2 font-bold uppercase text-xs border-2 border-ink transition-colors ${
-                      status === "draft"
-                        ? "bg-ink text-white"
-                        : "bg-white text-ink hover:bg-ink/10"
-                    }`}
+                    type="submit"
+                    disabled={submitting}
+                    className="flex-1 bg-accent-orange text-white py-3 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all disabled:opacity-50"
                   >
-                    Draft
+                    {submitting
+                      ? status === "draft"
+                        ? "Saving…"
+                        : "Listing…"
+                      : status === "draft"
+                        ? "Save Draft"
+                        : "List on Market"}
                   </button>
                   <button
                     type="button"
-                    onClick={() => setStatus("published")}
-                    className={`flex-1 py-2 font-bold uppercase text-xs border-2 border-ink transition-colors ${
-                      status === "published"
-                        ? "bg-ink text-white"
-                        : "bg-white text-ink hover:bg-ink/10"
-                    }`}
+                    onClick={handleClose}
+                    className="px-5 bg-white text-ink py-3 font-display uppercase border-2 border-ink hover:bg-ink hover:text-white transition-colors"
                   >
-                    Publish
+                    Cancel
                   </button>
                 </div>
-              </div>
-
-              {status === "published" && activeListingCount >= 10 && (
-                <p className="text-xs font-bold text-magenta bg-magenta/10 p-2 border-l-4 border-magenta">
-                  ⚠️ You've reached 10 published listings. Switch to "Draft" to save for later, or remove a listing.
-                </p>
-              )}
-
-              {error && <p className="text-xs font-bold text-magenta">{error}</p>}
-
-              <div className="flex gap-2 pt-1">
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="flex-1 bg-accent-orange text-white py-3 font-display uppercase border-2 border-ink shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all disabled:opacity-50"
-                >
-                  {submitting
-                    ? status === "draft"
-                      ? "Saving…"
-                      : "Listing…"
-                    : status === "draft"
-                      ? "Save Draft"
-                      : "List on Market"}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleClose}
-                  className="px-5 bg-white text-ink py-3 font-display uppercase border-2 border-ink hover:bg-ink hover:text-white transition-colors"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
+              </form>
+            </motion.div>
           </motion.div>
-        </motion.div>
+        )}
+      </AnimatePresence>
+
+      {cropOpen && rawImage && (
+        <CoverCropModal
+          imageSrc={rawImage}
+          onCancel={handleCropCancel}
+          onConfirm={handleCropConfirm}
+        />
       )}
-    </AnimatePresence>
+    </>
   );
 }

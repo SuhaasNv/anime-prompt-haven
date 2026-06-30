@@ -3,15 +3,12 @@ import sharp from "sharp";
 // Listing cover images are normalized server-side so the database is the
 // sole authority on what gets stored and rendered: every image is decoded
 // (real magic-byte check, not the declared MIME), stripped of EXIF/ICC
-// metadata, re-oriented, converted to sRGB, cropped to the site's 4:3
-// aspect ratio, and re-encoded as WebP.
+// metadata, re-oriented, converted to sRGB, downscaled to fit WITHIN a
+// 1024x768 box (aspect ratio preserved — never cropped, so portrait and
+// wide uploads keep their full frame), and re-encoded as WebP. The UI
+// letterboxes any ratio with a blurred backdrop, so we don't crop here.
 const ALLOWED_INPUT_FORMATS = ["jpeg", "png", "webp", "gif"] as const;
-const ALLOWED_INPUT_MIME_TYPES = new Set([
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "image/gif",
-]);
+const ALLOWED_INPUT_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
 // ~8000x5000px — generous for any legitimate upload, but blocks a tiny file
 // that decompresses into a memory-exhausting bitmap.
@@ -44,7 +41,9 @@ const formatToMime: Record<(typeof ALLOWED_INPUT_FORMATS)[number], string> = {
   gif: "image/gif",
 };
 
-function isAllowedFormat(format: string | undefined): format is (typeof ALLOWED_INPUT_FORMATS)[number] {
+function isAllowedFormat(
+  format: string | undefined,
+): format is (typeof ALLOWED_INPUT_FORMATS)[number] {
   return !!format && (ALLOWED_INPUT_FORMATS as readonly string[]).includes(format);
 }
 
@@ -57,7 +56,7 @@ function isAllowedFormat(format: string | undefined): format is (typeof ALLOWED_
 async function decodeAndValidate(
   dataUrl: string,
   minWidth: number,
-  minHeight: number
+  minHeight: number,
 ): Promise<{ buffer: Buffer; metadata: sharp.Metadata }> {
   const match = DATA_URL_PATTERN.exec(dataUrl);
   if (!match) {
@@ -125,7 +124,16 @@ export async function validateAndNormalizeImage(dataUrl: string): Promise<string
     sharp(buffer, { limitInputPixels: MAX_INPUT_PIXELS, animated: false })
       .rotate()
       .toColourspace("srgb")
-      .resize({ width: OUTPUT_WIDTH, height: OUTPUT_HEIGHT, fit: "cover", position: "attention" });
+      // `inside` scales the image to fit within the box while preserving its
+      // aspect ratio — it never crops. `withoutEnlargement` avoids upscaling
+      // (and blurring) uploads smaller than the box. Portrait/wide images keep
+      // their full frame; the UI letterboxes them with a blurred backdrop.
+      .resize({
+        width: OUTPUT_WIDTH,
+        height: OUTPUT_HEIGHT,
+        fit: "inside",
+        withoutEnlargement: true,
+      });
 
   let output: Buffer;
   try {
@@ -156,7 +164,12 @@ export async function validateAndNormalizeAvatar(dataUrl: string): Promise<strin
     sharp(buffer, { limitInputPixels: MAX_INPUT_PIXELS, animated: false })
       .rotate()
       .toColourspace("srgb")
-      .resize({ width: AVATAR_OUTPUT_SIZE, height: AVATAR_OUTPUT_SIZE, fit: "cover", position: "attention" });
+      .resize({
+        width: AVATAR_OUTPUT_SIZE,
+        height: AVATAR_OUTPUT_SIZE,
+        fit: "cover",
+        position: "attention",
+      });
 
   let output: Buffer;
   try {

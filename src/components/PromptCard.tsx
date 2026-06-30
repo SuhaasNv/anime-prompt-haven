@@ -15,9 +15,20 @@ interface PromptCardProps {
   prompt: Prompt;
   purchased?: boolean;
   currentUserId?: string;
+  /**
+   * Position in its grid. Used only to stagger the reveal animation
+   * (~50ms per item, capped) so a grid cascades in instead of popping
+   * all at once. Defaults to 0, leaving existing callers unchanged.
+   */
+  index?: number;
 }
 
-export function PromptCard({ prompt, purchased = false, currentUserId }: PromptCardProps) {
+export function PromptCard({
+  prompt,
+  purchased = false,
+  currentUserId,
+  index = 0,
+}: PromptCardProps) {
   const isOwner = !!currentUserId && prompt.userId === currentUserId;
   const rotate = prompt.rotate === 1 ? "rotate-1" : prompt.rotate === -1 ? "-rotate-1" : "";
   return (
@@ -26,15 +37,25 @@ export function PromptCard({ prompt, purchased = false, currentUserId }: PromptC
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-50px" }}
       whileHover={{ rotate: -2, scale: 1.02 }}
-      transition={{ type: "spring", stiffness: 260, damping: 22 }}
-      className={`relative bg-white border-2 border-ink p-4 ${shadowMap[prompt.shadow]} ${rotate} hover:drop-shadow-[0_0_18px_rgba(212,0,255,0.45)]`}
+      transition={{
+        type: "spring",
+        stiffness: 260,
+        damping: 22,
+        delay: Math.min(index * 0.05, 0.4),
+      }}
+      className={`relative bg-white border-2 border-ink/55 p-4 ${shadowMap[prompt.shadow]} ${rotate} hover:drop-shadow-[0_0_18px_rgba(212,0,255,0.45)]`}
     >
       {/* Stretched link covers the whole card; the @creator link below sits
           above it (pointer-events-auto) so it remains independently clickable
           without nesting an <a> inside an <a>. */}
-      <Link to="/prompt/$id" params={{ id: prompt.id }} className="absolute inset-0 z-0" aria-label={prompt.title} />
+      <Link
+        to="/prompt/$id"
+        params={{ id: prompt.id }}
+        className="absolute inset-0 z-0"
+        aria-label={prompt.title}
+      />
       <div className="relative pointer-events-none">
-        <div className="w-full aspect-[4/3] mb-4 overflow-hidden border-2 border-ink relative bg-ink">
+        <div className="w-full aspect-[4/3] mb-4 overflow-hidden border-2 border-ink/55 relative bg-ink">
           {/* Blurred, zoomed copy fills the card so any aspect ratio (e.g. 16:9)
               reads as an ambient backdrop instead of being cropped. */}
           <img
@@ -79,7 +100,9 @@ export function PromptCard({ prompt, purchased = false, currentUserId }: PromptC
           >
             @{prompt.creator}
           </Link>
-          <span className="ml-auto text-xs font-bold text-accent-orange">★ {prompt.rating.toFixed(1)}</span>
+          <span className="ml-auto text-xs font-bold text-accent-orange">
+            ★ {prompt.rating.toFixed(1)}
+          </span>
         </div>
         {isOwner ? (
           <div className="w-full bg-holo-purple text-white py-3 font-bold uppercase text-center hover:bg-magenta transition-colors text-sm">
