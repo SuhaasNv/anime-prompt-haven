@@ -17,6 +17,7 @@ const TYPE_LABELS: Record<string, { label: string; color: string }> = {
   platform_fee: { label: "Platform Fee", color: "text-ink/40" },
   refund:       { label: "Refund",       color: "text-holo-purple" },
   withdrawal:   { label: "Withdrawal",   color: "text-magenta" },
+  adjustment:   { label: "Admin Adjustment", color: "text-holo-purple" },
 };
 
 interface CreditsModalProps {

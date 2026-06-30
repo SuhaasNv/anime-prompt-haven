@@ -5,6 +5,11 @@ import { getDb } from "../db.server";
 import { getSessionUser } from "../auth.server";
 import { logAdminAction } from "./audit.functions";
 
+export interface DayPoint {
+  date: string; // YYYY-MM-DD
+  value: number;
+}
+
 interface DashboardMetrics {
   revenue: {
     total24h: number;
@@ -25,8 +30,18 @@ interface DashboardMetrics {
   };
   health: {
     averageRating: number;
+    reviewCount: number;
     reportResolutionTime: string;
   };
+  // Last-14-day series (gap-filled) for sparklines and the revenue bar chart.
+  series: {
+    revenueDaily: DayPoint[];
+    signupsDaily: DayPoint[];
+    listingsDaily: DayPoint[];
+  };
+  // Donut breakdowns.
+  listingStatus: { status: string; count: number }[];
+  revenueSplit: { authorEarnings: number; platformFees: number };
 }
 
 export const getDashboardMetrics = createServerFn({ method: "GET" }).handler(async () => {
@@ -110,6 +125,55 @@ export const getDashboardMetrics = createServerFn({ method: "GET" }).handler(asy
     totalListings: 0,
   };
 
+  // 14-day window (inclusive of today) for the sparklines + bar chart. Each
+  // query gap-fills with generate_series so missing days are 0, not absent.
+  const seriesStart = new Date(now.getTime() - 13 * 24 * 60 * 60 * 1000);
+
+  const revenueDailyResult = await db.query<{ date: string; value: string }>(
+    `SELECT to_char(d.day, 'YYYY-MM-DD') AS date,
+            COALESCE(SUM(p.price_paid), 0)::numeric AS value
+     FROM generate_series(date_trunc('day', $1::timestamptz), date_trunc('day', now()), interval '1 day') d(day)
+     LEFT JOIN purchases p ON date_trunc('day', p.created_at) = d.day
+     GROUP BY d.day ORDER BY d.day`,
+    [seriesStart],
+  );
+  const signupsDailyResult = await db.query<{ date: string; value: string }>(
+    `SELECT to_char(d.day, 'YYYY-MM-DD') AS date,
+            COUNT(u.id)::numeric AS value
+     FROM generate_series(date_trunc('day', $1::timestamptz), date_trunc('day', now()), interval '1 day') d(day)
+     LEFT JOIN users u ON date_trunc('day', u.created_at) = d.day
+     GROUP BY d.day ORDER BY d.day`,
+    [seriesStart],
+  );
+  const listingsDailyResult = await db.query<{ date: string; value: string }>(
+    `SELECT to_char(d.day, 'YYYY-MM-DD') AS date,
+            COUNT(pl.id)::numeric AS value
+     FROM generate_series(date_trunc('day', $1::timestamptz), date_trunc('day', now()), interval '1 day') d(day)
+     LEFT JOIN prompt_listings pl ON date_trunc('day', pl.created_at) = d.day
+     GROUP BY d.day ORDER BY d.day`,
+    [seriesStart],
+  );
+
+  const ratingResult = await db.query<{ avg: string; count: string }>(
+    `SELECT COALESCE(AVG(rating), 0)::numeric AS avg, COUNT(*)::numeric AS count FROM reviews`,
+  );
+  const statusResult = await db.query<{ status: string; count: string }>(
+    `SELECT status, COUNT(*)::numeric AS count FROM prompt_listings GROUP BY status ORDER BY status`,
+  );
+  const splitResult = await db.query<{ author_earnings: string; platform_fees: string }>(
+    `SELECT
+       COALESCE(SUM(CASE WHEN type IN ('sale_earn', 'copy_earn') THEN ABS(amount) ELSE 0 END), 0)::numeric AS author_earnings,
+       COALESCE(SUM(CASE WHEN type = 'platform_fee' THEN ABS(amount) ELSE 0 END), 0)::numeric AS platform_fees
+     FROM credit_transactions WHERE created_at >= $1`,
+    [day30],
+  );
+
+  const toSeries = (rows: { date: string; value: string }[]): DayPoint[] =>
+    rows.map((r) => ({ date: r.date, value: parseFloat(r.value) }));
+
+  const rating = ratingResult.rows[0] || { avg: "0", count: "0" };
+  const split = splitResult.rows[0] || { author_earnings: "0", platform_fees: "0" };
+
   return {
     revenue: {
       total24h: parseFloat(revenue.total24h.toString()),
@@ -129,8 +193,22 @@ export const getDashboardMetrics = createServerFn({ method: "GET" }).handler(asy
       totalListings: content.totalListings || 0,
     },
     health: {
-      averageRating: 4.5,
+      averageRating: parseFloat(rating.avg),
+      reviewCount: Math.round(parseFloat(rating.count)),
       reportResolutionTime: "~24 hours",
+    },
+    series: {
+      revenueDaily: toSeries(revenueDailyResult.rows),
+      signupsDaily: toSeries(signupsDailyResult.rows),
+      listingsDaily: toSeries(listingsDailyResult.rows),
+    },
+    listingStatus: statusResult.rows.map((r) => ({
+      status: r.status,
+      count: Math.round(parseFloat(r.count)),
+    })),
+    revenueSplit: {
+      authorEarnings: parseFloat(split.author_earnings),
+      platformFees: parseFloat(split.platform_fees),
     },
   } as DashboardMetrics;
 });
@@ -367,7 +445,7 @@ export const adjustUserCredits = createServerFn({ method: "POST" })
   .inputValidator(
     z.object({
       userId: z.string().uuid(),
-      amount: z.number(),
+      amount: z.number().refine((n) => n !== 0, "Amount can't be zero."),
       reason: z.string().min(1).max(300),
     }),
   )
@@ -389,16 +467,30 @@ export const adjustUserCredits = createServerFn({ method: "POST" })
         [data.userId, 0],
       );
 
-      // Lock and update balance
+      // Lock the row, then guard against driving the balance below zero so a
+      // negative adjustment returns a friendly error instead of tripping the
+      // CHECK (balance >= 0) constraint. (Mirrors purchases.functions.ts.)
+      const locked = await client.query<{ balance: string }>(
+        `SELECT balance FROM user_credits WHERE user_id = $1 FOR UPDATE`,
+        [data.userId],
+      );
+      const current = parseFloat(locked.rows[0]?.balance ?? "0");
+      if (current + data.amount < 0) {
+        // Thrown here; the catch block issues the ROLLBACK.
+        throw new Error(
+          `Insufficient balance — user only has ${current.toFixed(2)} credits.`,
+        );
+      }
+
       await client.query(
         `UPDATE user_credits SET balance = balance + $1, updated_at = now() WHERE user_id = $2`,
         [data.amount, data.userId],
       );
 
-      // Log transaction
+      // Record as 'adjustment' so it's distinct from welcome/publish bonuses.
       await client.query(
         `INSERT INTO credit_transactions (user_id, amount, type, note)
-         VALUES ($1, $2, 'bonus', $3)`,
+         VALUES ($1, $2, 'adjustment', $3)`,
         [data.userId, data.amount, data.reason],
       );
 

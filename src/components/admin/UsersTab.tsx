@@ -131,44 +131,80 @@ export function UsersTab({ users, loading, search, onSearchChange, onUserUpdated
               </div>
 
               {/* Credit adjustment form */}
-              {adjustingCredits?.userId === userProfile.id ? (
-                <div className="mb-4 p-4 bg-accent-yellow border-2 border-ink">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={adjustingCredits.amount}
-                      onChange={(e) =>
-                        setAdjustingCredits({ ...adjustingCredits, amount: e.target.value })
-                      }
-                      placeholder="Amount (+ or -)"
-                      className="px-3 py-2 border-2 border-ink font-mono text-sm"
-                    />
-                    <input
-                      type="text"
-                      value={adjustingCredits.reason}
-                      onChange={(e) =>
-                        setAdjustingCredits({ ...adjustingCredits, reason: e.target.value })
-                      }
-                      placeholder="Reason"
-                      className="px-3 py-2 border-2 border-ink font-mono text-sm"
-                    />
-                    <button
-                      onClick={() => handleAdjustCredits(userProfile.id)}
-                      disabled={processing === userProfile.id}
-                      className="bg-magenta text-white py-2 font-bold uppercase border-2 border-ink text-xs shadow-[2px_2px_0_0_#d400ff] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all disabled:opacity-50"
-                    >
-                      {processing === userProfile.id ? "…" : "Apply"}
-                    </button>
-                  </div>
-                  <button
-                    onClick={() => setAdjustingCredits(null)}
-                    className="text-xs font-bold text-ink/60 hover:text-ink"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              ) : null}
+              {adjustingCredits?.userId === userProfile.id
+                ? (() => {
+                    const parsed = parseFloat(adjustingCredits.amount);
+                    const delta = Number.isFinite(parsed) ? parsed : 0;
+                    const balanceAfter = userProfile.balance + delta;
+                    const invalid = delta === 0 || balanceAfter < 0 || !adjustingCredits.reason.trim();
+                    return (
+                      <div className="mb-4 p-4 bg-accent-yellow border-2 border-ink">
+                        {/* Preset chips */}
+                        <div className="flex flex-wrap gap-2 mb-3">
+                          {[5, 10, 50, -5].map((preset) => (
+                            <button
+                              key={preset}
+                              type="button"
+                              onClick={() =>
+                                setAdjustingCredits({ ...adjustingCredits, amount: String(preset) })
+                              }
+                              className="px-3 py-1 border-2 border-ink bg-white text-xs font-bold hover:bg-ink hover:text-white transition-colors"
+                            >
+                              {preset > 0 ? `+${preset}` : preset}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={adjustingCredits.amount}
+                            onChange={(e) =>
+                              setAdjustingCredits({ ...adjustingCredits, amount: e.target.value })
+                            }
+                            placeholder="Amount (+ or -)"
+                            className="px-3 py-2 border-2 border-ink font-mono text-sm"
+                          />
+                          <input
+                            type="text"
+                            value={adjustingCredits.reason}
+                            onChange={(e) =>
+                              setAdjustingCredits({ ...adjustingCredits, reason: e.target.value })
+                            }
+                            placeholder="Reason (required)"
+                            className="px-3 py-2 border-2 border-ink font-mono text-sm"
+                          />
+                          <button
+                            onClick={() => handleAdjustCredits(userProfile.id)}
+                            disabled={processing === userProfile.id || invalid}
+                            className="bg-magenta text-white py-2 font-bold uppercase border-2 border-ink text-xs shadow-[2px_2px_0_0_#d400ff] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all disabled:opacity-40"
+                          >
+                            {processing === userProfile.id ? "…" : "Apply"}
+                          </button>
+                        </div>
+                        {/* Balance-after preview */}
+                        <p className="text-xs font-bold uppercase mb-2">
+                          Balance: ✦ {userProfile.balance.toFixed(2)}
+                          {delta !== 0 && (
+                            <>
+                              {" → "}
+                              <span className={balanceAfter < 0 ? "text-magenta" : "text-ink"}>
+                                ✦ {balanceAfter.toFixed(2)}
+                              </span>
+                              {balanceAfter < 0 && " (insufficient)"}
+                            </>
+                          )}
+                        </p>
+                        <button
+                          onClick={() => setAdjustingCredits(null)}
+                          className="text-xs font-bold text-ink/60 hover:text-ink"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    );
+                  })()
+                : null}
 
               <div className="flex gap-3">
                 <button

@@ -20,6 +20,9 @@ import { ReportsTab } from "@/components/admin/ReportsTab";
 import { ListingsTab } from "@/components/admin/ListingsTab";
 import { UsersTab } from "@/components/admin/UsersTab";
 import { FinancialTab } from "@/components/admin/FinancialTab";
+import { StatCard } from "@/components/ui/StatCard";
+import { DonutChart } from "@/components/ui/charts/DonutChart";
+import { BarChart } from "@/components/ui/charts/BarChart";
 
 interface FlaggedListing {
   id: string;
@@ -78,7 +81,35 @@ const TYPE_LABELS: Record<string, string> = {
   platform_fee: "Platform Fee",
   refund: "Refund",
   withdrawal: "Withdrawal",
+  adjustment: "Admin Adjustment",
 };
+
+const NAV_ITEMS: { key: AdminTab; label: string; icon: string }[] = [
+  { key: "dashboard", label: "Dashboard", icon: "📊" },
+  { key: "reports", label: "Reports", icon: "⚡" },
+  { key: "listings", label: "Listings", icon: "📝" },
+  { key: "users", label: "Users", icon: "👥" },
+  { key: "financial", label: "Financial", icon: "💰" },
+  { key: "queue", label: "Queue", icon: "⚠️" },
+  { key: "audit", label: "Audit Log", icon: "🔍" },
+  { key: "credits", label: "Transactions", icon: "✦" },
+];
+
+/** Bar-chart x labels: weekday letters from a YYYY-MM-DD date. */
+function dayLabel(date: string): string {
+  const d = new Date(`${date}T00:00:00`);
+  return ["S", "M", "T", "W", "T", "F", "S"][d.getDay()];
+}
+
+/** % change between the last value and the mean of the prior window. */
+function trendPct(series: { value: number }[]): number | null {
+  if (series.length < 2) return null;
+  const last = series[series.length - 1].value;
+  const prior = series.slice(0, -1);
+  const avg = prior.reduce((s, p) => s + p.value, 0) / prior.length;
+  if (avg === 0) return last > 0 ? 100 : null;
+  return ((last - avg) / avg) * 100;
+}
 
 function AdminDashboard() {
   const { flagged } = Route.useLoaderData() as { flagged: FlaggedListing[] };
@@ -245,110 +276,57 @@ function AdminDashboard() {
           <p className="text-ink/70">Moderation tools and platform activity.</p>
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-2 mb-8 border-b-4 border-ink flex-wrap">
-          {(
-            [
-              "dashboard",
-              "reports",
-              "listings",
-              "users",
-              "financial",
-              "queue",
-              "audit",
-              "credits",
-            ] as AdminTab[]
-          ).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-5 py-2.5 font-display uppercase text-sm border-2 border-b-0 transition-all ${
-                activeTab === tab
-                  ? "bg-magenta text-white border-ink"
-                  : "bg-white text-ink border-ink/30 hover:border-ink"
-              }`}
-            >
-              {tab === "dashboard" && "📊 Analytics"}
-              {tab === "reports" &&
-                `⚡ Reports ${reports && reports.length > 0 ? `(${reports.length})` : ""}`}
-              {tab === "listings" && "📝 Listings"}
-              {tab === "users" && "👥 Users"}
-              {tab === "financial" && "💰 Financial"}
-              {tab === "queue" && `⚠️ Queue (${listings.length})`}
-              {tab === "audit" && "🔍 Audit Log"}
-              {tab === "credits" && "✦ Transactions"}
-            </button>
-          ))}
-        </div>
+        <div className="grid grid-cols-12 gap-6">
+          {/* Sidebar nav */}
+          <aside className="col-span-12 lg:col-span-3 xl:col-span-2">
+            <div className="lg:sticky lg:top-24 bg-white border-4 border-ink shadow-pop">
+              <nav className="flex lg:flex-col gap-1 p-2 overflow-x-auto">
+                {NAV_ITEMS.map((item) => {
+                  const count =
+                    item.key === "queue"
+                      ? listings.length
+                      : item.key === "reports"
+                        ? (reports?.length ?? 0)
+                        : 0;
+                  const active = activeTab === item.key;
+                  return (
+                    <button
+                      key={item.key}
+                      onClick={() => setActiveTab(item.key)}
+                      aria-current={active ? "page" : undefined}
+                      className={`flex items-center gap-2 px-3 py-2.5 font-bold uppercase text-xs whitespace-nowrap border-2 transition-all ${
+                        active
+                          ? "bg-magenta text-white border-ink"
+                          : "bg-white text-ink border-transparent hover:border-ink"
+                      }`}
+                    >
+                      <span aria-hidden>{item.icon}</span>
+                      <span>{item.label}</span>
+                      {count > 0 && (
+                        <span
+                          className={`ml-auto text-[10px] px-1.5 py-0.5 border font-bold ${
+                            active ? "border-white" : "border-ink bg-accent-yellow"
+                          }`}
+                        >
+                          {count}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </nav>
+            </div>
+          </aside>
+
+          {/* Content pane */}
+          <div className="col-span-12 lg:col-span-9 xl:col-span-10 min-w-0">
 
         {activeTab === "dashboard" && (
           <div>
             {loadingMetrics ? (
               <p className="text-ink/50 py-10 text-center font-mono">Loading metrics…</p>
             ) : metrics ? (
-              <div className="space-y-8">
-                {/* Revenue Section */}
-                <div>
-                  <h3 className="font-display text-xl uppercase mb-4">Revenue</h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    {[
-                      { label: "Revenue (24h)", value: metrics.revenue.total24h },
-                      { label: "Revenue (7d)", value: metrics.revenue.total7d },
-                      { label: "Revenue (30d)", value: metrics.revenue.total30d },
-                      { label: "Platform Fees (24h)", value: metrics.revenue.platformFees24h },
-                    ].map((m) => (
-                      <div key={m.label} className="bg-white border-4 border-ink p-4 shadow-pop">
-                        <div className="text-xs font-bold uppercase tracking-widest text-ink/60 mb-2">
-                          {m.label}
-                        </div>
-                        <div className="font-display text-2xl uppercase">
-                          ✦ {m.value.toFixed(2)}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* User Engagement */}
-                <div>
-                  <h3 className="font-display text-xl uppercase mb-4">Users</h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    {[
-                      { label: "Active Creators (24h)", value: metrics.users.activeCreators24h },
-                      { label: "Active Buyers (24h)", value: metrics.users.activeBuyers24h },
-                      { label: "Total Creators", value: metrics.users.totalCreators },
-                      { label: "Total Users", value: metrics.users.totalUsers },
-                    ].map((m) => (
-                      <div key={m.label} className="bg-white border-4 border-ink p-4 shadow-pop">
-                        <div className="text-xs font-bold uppercase tracking-widest text-ink/60 mb-2">
-                          {m.label}
-                        </div>
-                        <div className="font-display text-2xl uppercase">{m.value}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Content Health */}
-                <div>
-                  <h3 className="font-display text-xl uppercase mb-4">Content Health</h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    {[
-                      { label: "Flagged Listings", value: metrics.content.flaggedListings },
-                      { label: "Pending Reports", value: metrics.content.pendingReports },
-                      { label: "Total Listings", value: metrics.content.totalListings },
-                      { label: "Avg Rating", value: metrics.health.averageRating.toFixed(1) },
-                    ].map((m) => (
-                      <div key={m.label} className="bg-white border-4 border-ink p-4 shadow-pop">
-                        <div className="text-xs font-bold uppercase tracking-widest text-ink/60 mb-2">
-                          {m.label}
-                        </div>
-                        <div className="font-display text-2xl uppercase">{m.value}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
+              <DashboardOverview metrics={metrics} />
             ) : null}
           </div>
         )}
@@ -619,7 +597,158 @@ function AdminDashboard() {
               ))}
             </div>
           ))}
+          </div>
+        </div>
       </main>
+    </div>
+  );
+}
+
+type Metrics = Awaited<ReturnType<typeof getDashboardMetrics>>;
+
+const STATUS_COLORS: Record<string, string> = {
+  published: "#16a34a",
+  flagged: "#ff6600",
+  removed: "#0a0a0c",
+  draft: "#ffcc00",
+  hidden: "#9d00ff",
+};
+
+function DashboardOverview({ metrics }: { metrics: Metrics }) {
+  const revSeries = metrics.series.revenueDaily.map((d) => d.value);
+  const signupSeries = metrics.series.signupsDaily.map((d) => d.value);
+  const listingSeries = metrics.series.listingsDaily.map((d) => d.value);
+  const sumSignups = signupSeries.reduce((s, v) => s + v, 0);
+  const sumListings = listingSeries.reduce((s, v) => s + v, 0);
+
+  const statusSegments = metrics.listingStatus.map((s) => ({
+    label: s.status,
+    value: s.count,
+    color: STATUS_COLORS[s.status] ?? "#9d00ff",
+  }));
+
+  const splitSegments = [
+    { label: "Authors", value: metrics.revenueSplit.authorEarnings, color: "#d400ff" },
+    { label: "Platform", value: metrics.revenueSplit.platformFees, color: "#ffcc00" },
+  ];
+  const splitTotal = metrics.revenueSplit.authorEarnings + metrics.revenueSplit.platformFees;
+
+  return (
+    <div className="space-y-6">
+      {/* Hero + headline stats */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+        <div className="bg-magenta text-white border-4 border-ink p-5 shadow-pop flex flex-col justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest opacity-80">Platform pulse</p>
+            <p className="font-display text-2xl uppercase mt-2 leading-none">Welcome back ✨</p>
+          </div>
+          <div className="mt-4">
+            <div className="font-display text-4xl leading-none">✦ {metrics.revenue.total30d.toFixed(0)}</div>
+            <p className="text-xs font-bold uppercase opacity-80 mt-1">Revenue · last 30 days</p>
+          </div>
+        </div>
+        <StatCard
+          label="Revenue (30d)"
+          value={`✦ ${metrics.revenue.total30d.toFixed(2)}`}
+          icon="💰"
+          series={revSeries}
+          delta={trendPct(metrics.series.revenueDaily)}
+          shadowClass="shadow-pop-magenta"
+        />
+        <StatCard
+          label="New users (14d)"
+          value={String(sumSignups)}
+          icon="👥"
+          series={signupSeries}
+          seriesColor="#9d00ff"
+          delta={trendPct(metrics.series.signupsDaily)}
+          shadowClass="shadow-pop-purple"
+        />
+        <StatCard
+          label="New listings (14d)"
+          value={String(sumListings)}
+          icon="📝"
+          series={listingSeries}
+          seriesColor="#ff6600"
+          delta={trendPct(metrics.series.listingsDaily)}
+          shadowClass="shadow-pop-orange"
+        />
+      </div>
+
+      {/* Secondary stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard label="Revenue (24h)" value={`✦ ${metrics.revenue.total24h.toFixed(2)}`} />
+        <StatCard label="Active buyers (24h)" value={String(metrics.users.activeBuyers24h)} />
+        <StatCard label="Total users" value={String(metrics.users.totalUsers)} />
+        <StatCard
+          label="Avg rating"
+          value={metrics.health.reviewCount > 0 ? `${metrics.health.averageRating.toFixed(1)} ★` : "—"}
+        />
+      </div>
+
+      {/* Revenue bar + listing-health donut */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-2 bg-white border-4 border-ink shadow-pop p-5 min-w-0">
+          <h3 className="font-display text-xl uppercase mb-4">Revenue · last 14 days</h3>
+          <BarChart
+            data={metrics.series.revenueDaily.map((d) => ({ label: dayLabel(d.date), value: d.value }))}
+            height={220}
+          />
+        </div>
+        <div className="bg-white border-4 border-ink shadow-pop p-5">
+          <h3 className="font-display text-xl uppercase mb-4">Listing health</h3>
+          <div className="flex flex-col items-center">
+            <DonutChart
+              segments={statusSegments}
+              size={180}
+              centerValue={String(metrics.content.totalListings)}
+              centerLabel="Listings"
+            />
+            <ul className="mt-4 w-full space-y-1 text-xs font-bold uppercase">
+              {statusSegments.map((s) => (
+                <li key={s.label} className="flex items-center gap-2">
+                  <span className="size-3 border border-ink shrink-0" style={{ background: s.color }} />
+                  <span>{s.label}</span>
+                  <span className="ml-auto text-ink/60">{s.value}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      {/* Revenue split donut + content health stats */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="bg-white border-4 border-ink shadow-pop p-5 flex flex-col items-center">
+          <h3 className="font-display text-xl uppercase mb-4 self-start">Revenue split (30d)</h3>
+          <DonutChart
+            segments={splitSegments}
+            size={180}
+            centerValue={`✦ ${splitTotal.toFixed(0)}`}
+            centerLabel="Total"
+          />
+          <ul className="mt-4 w-full space-y-1 text-xs font-bold uppercase">
+            {splitSegments.map((s) => (
+              <li key={s.label} className="flex items-center gap-2">
+                <span className="size-3 border border-ink shrink-0" style={{ background: s.color }} />
+                <span>{s.label}</span>
+                <span className="ml-auto text-ink/60">✦ {s.value.toFixed(2)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="lg:col-span-2 grid grid-cols-2 gap-4 content-start">
+          <StatCard
+            label="Flagged listings"
+            value={String(metrics.content.flaggedListings)}
+            icon="⚠️"
+            shadowClass={metrics.content.flaggedListings > 0 ? "shadow-pop-orange" : "shadow-pop"}
+          />
+          <StatCard label="Pending reports" value={String(metrics.content.pendingReports)} icon="⚡" />
+          <StatCard label="Active creators (24h)" value={String(metrics.users.activeCreators24h)} />
+          <StatCard label="Platform fees (24h)" value={`✦ ${metrics.revenue.platformFees24h.toFixed(2)}`} />
+        </div>
+      </div>
     </div>
   );
 }
