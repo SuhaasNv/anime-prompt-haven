@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Navbar } from "@/components/Navbar";
 import { AvatarCropModal } from "@/components/AvatarCropModal";
 import { confirm } from "@/components/ui/confirm-dialog";
-import { CURRENT_USER_QUERY_KEY, getCurrentUser, removeAvatar, setMascot, updateAvatar, updateBio } from "@/lib/api/auth.functions";
+import { CURRENT_USER_QUERY_KEY, getCurrentUser, removeAvatar, resetTour, setMascot, updateAvatar, updateBio } from "@/lib/api/auth.functions";
 import { MASCOTS, type MascotKey } from "@/lib/mascots";
 import { ACCENT_THEMES, applyAccentTheme, getStoredAccentTheme, persistAccentTheme, type AccentTheme } from "@/lib/theme";
 import { playTactileClick } from "@/lib/sound";
@@ -105,6 +105,20 @@ function ProfilePage() {
     persistAccentTheme(key);
   };
 
+  const [replayingTour, setReplayingTour] = useState(false);
+  const handleReplayTour = async () => {
+    if (replayingTour) return;
+    setReplayingTour(true);
+    try {
+      await resetTour();
+      const fresh = await getCurrentUser();
+      queryClient.setQueryData(CURRENT_USER_QUERY_KEY, fresh);
+      await router.navigate({ to: "/dashboard" });
+    } catch {
+      setReplayingTour(false);
+    }
+  };
+
   const handlePickCompanion = async (key: MascotKey) => {
     if (key === companion || savingCompanion) return;
     const previous = companion;
@@ -112,6 +126,10 @@ function ProfilePage() {
     setSavingCompanion(true);
     try {
       await setMascot({ data: { mascot: key } });
+      // Refresh the cached current user so the navbar avatar (and anything else
+      // reading CURRENT_USER_QUERY_KEY) reflects the new companion immediately,
+      // not just after a page refresh.
+      await queryClient.invalidateQueries({ queryKey: CURRENT_USER_QUERY_KEY });
       await router.invalidate();
     } catch {
       setCompanion(previous);
@@ -368,6 +386,17 @@ function ProfilePage() {
                 onChange={(e) => handleFontChange(Number(e.target.value))}
                 className="w-full accent-magenta"
               />
+            </Section>
+
+            <Section title="App Tour">
+              <p className="text-sm text-ink/60 mb-3">Take the guided walkthrough of PromptStar again.</p>
+              <button
+                onClick={handleReplayTour}
+                disabled={replayingTour}
+                className="w-full py-3 border-2 border-ink font-bold uppercase text-sm bg-white hover:bg-accent-yellow transition-all shadow-[4px_4px_0_0_#0a0a0c] active:translate-x-1 active:translate-y-1 active:shadow-none disabled:opacity-50"
+              >
+                {replayingTour ? "Starting…" : "↺ Replay tour"}
+              </button>
             </Section>
 
             <Section title="Account">
