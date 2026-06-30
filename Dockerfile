@@ -18,7 +18,7 @@ RUN bun run build
 RUN bun install --production --frozen-lockfile
 
 # ── Stage 2: runtime ─────────────────────────────────────────────────────────
-FROM node:20-slim AS runner
+FROM node:26-slim AS runner
 
 WORKDIR /app
 
