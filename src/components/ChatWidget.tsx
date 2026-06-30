@@ -7,6 +7,65 @@ import { Link } from "@tanstack/react-router";
 import type { MascotKey } from "@/lib/mascots";
 import { MASCOTS } from "@/lib/mascots";
 
+// Lightweight markdown renderer — handles the patterns the LLM produces:
+// numbered lists, bullet lists, **bold**, and line breaks.
+function renderMarkdown(text: string): React.ReactNode {
+  const lines = text.split("\n");
+  const nodes: React.ReactNode[] = [];
+  let listItems: string[] = [];
+  let listType: "ol" | "ul" | null = null;
+
+  const flushList = () => {
+    if (!listItems.length) return;
+    const Tag = listType!;
+    nodes.push(
+      <Tag key={nodes.length} className={Tag === "ol" ? "list-decimal pl-5 space-y-0.5 my-1" : "list-disc pl-5 space-y-0.5 my-1"}>
+        {listItems.map((item, i) => (
+          <li key={i}>{renderInline(item)}</li>
+        ))}
+      </Tag>,
+    );
+    listItems = [];
+    listType = null;
+  };
+
+  for (const line of lines) {
+    const numberedMatch = /^\d+\.\s+(.+)/.exec(line);
+    const bulletMatch = /^[-*]\s+(.+)/.exec(line);
+    if (numberedMatch) {
+      if (listType === "ul") flushList();
+      listType = "ol";
+      listItems.push(numberedMatch[1]);
+    } else if (bulletMatch) {
+      if (listType === "ol") flushList();
+      listType = "ul";
+      listItems.push(bulletMatch[1]);
+    } else {
+      flushList();
+      if (line.trim() === "") {
+        nodes.push(<br key={nodes.length} />);
+      } else {
+        nodes.push(<span key={nodes.length} className="block">{renderInline(line)}</span>);
+      }
+    }
+  }
+  flushList();
+  return <>{nodes}</>;
+}
+
+function renderInline(text: string): React.ReactNode {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return (
+    <>
+      {parts.map((part, i) =>
+        part.startsWith("**") && part.endsWith("**")
+          ? <strong key={i}>{part.slice(2, -2)}</strong>
+          : part,
+      )}
+    </>
+  );
+}
+
 interface PromptCard {
   id: string;
   title: string;
@@ -220,7 +279,7 @@ export function ChatWidget({ open, onClose, mascotKey, isAuthed }: ChatWidgetPro
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 24, scale: 0.95 }}
           transition={{ type: "spring", stiffness: 320, damping: 28 }}
-          className={`fixed bottom-36 right-6 z-[101] flex flex-col bg-white border-4 border-ink shadow-pop-lg transition-all duration-300 ${expanded ? "w-[680px] max-h-[80vh]" : "w-[420px] max-h-[640px]"}`}
+          className={`fixed right-6 z-[101] flex flex-col bg-white border-4 border-ink shadow-pop-lg transition-all duration-300 ${expanded ? "bottom-6 w-[680px] max-h-[88vh]" : "bottom-36 w-[420px] max-h-[640px]"}`}
           style={{ willChange: "transform, opacity" }}
         >
           {/* Header */}
@@ -316,7 +375,7 @@ export function ChatWidget({ open, onClose, mascotKey, isAuthed }: ChatWidgetPro
                     >
                       {msg.content ? (
                         <>
-                          {msg.content}
+                          {msg.role === "assistant" ? renderMarkdown(msg.content) : msg.content}
                           {msg.streaming && (
                             <span className="inline-block w-[2px] h-[1em] bg-current ml-0.5 align-middle animate-[blink_0.8s_step-end_infinite]" />
                           )}
