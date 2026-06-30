@@ -95,6 +95,49 @@ export const setMascot = createServerFn({ method: "POST" })
     return { ok: true as const };
   });
 
+export const completeOnboarding = createServerFn({ method: "POST" })
+  .inputValidator(
+    z.object({
+      username: z.string().min(2).max(40),
+      mascot: z.enum(MASCOT_VALUES),
+    }),
+  )
+  .handler(async ({ data }) => {
+    const user = await getSessionUser();
+    if (!user) {
+      throw new Error("You need to be signed in to do that.");
+    }
+
+    const username = sanitize(data.username);
+    if (username.length < 2) {
+      throw new Error("Please choose a username with at least 2 characters.");
+    }
+
+    const db = getDb();
+    const taken = await db.query("SELECT id FROM users WHERE username = $1 AND id <> $2", [
+      username,
+      user.id,
+    ]);
+    if (taken.rows.length > 0) {
+      throw new Error("That username is already taken.");
+    }
+
+    try {
+      await db.query("UPDATE users SET username = $1, mascot = $2, onboarded = true WHERE id = $3", [
+        username,
+        data.mascot,
+        user.id,
+      ]);
+    } catch (err) {
+      if (err && typeof err === "object" && "code" in err && err.code === "23505") {
+        throw new Error("That username is already taken.");
+      }
+      throw err;
+    }
+
+    return { ok: true as const };
+  });
+
 export const signIn = createServerFn({ method: "POST" })
   .inputValidator(
     z.object({

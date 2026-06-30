@@ -160,39 +160,52 @@ async function deriveUniqueUsername(seed: string): Promise<string> {
  *   2. existing email      → link google_id onto it (one account, both methods)
  *   3. otherwise           → create a passwordless Google user + welcome bonus
  */
-export async function findOrCreateGoogleUser(info: GoogleUserInfo): Promise<string> {
+export async function findOrCreateGoogleUser(
+  info: GoogleUserInfo,
+): Promise<{ userId: string; needsOnboarding: boolean }> {
   const db = getDb();
   const email = info.email.toLowerCase();
 
-  const byGoogle = await db.query<{ id: string }>("SELECT id FROM users WHERE google_id = $1", [info.sub]);
-  if (byGoogle.rows[0]) return byGoogle.rows[0].id;
+  // Returning Google user — send them through onboarding only if they never
+  // finished it (e.g. abandoned the first time).
+  const byGoogle = await db.query<{ id: string; onboarded: boolean }>(
+    "SELECT id, onboarded FROM users WHERE google_id = $1",
+    [info.sub],
+  );
+  if (byGoogle.rows[0]) {
+    return { userId: byGoogle.rows[0].id, needsOnboarding: !byGoogle.rows[0].onboarded };
+  }
 
+  // Existing account by verified email — link Google onto it; it's already set up.
   const byEmail = await db.query<{ id: string }>("SELECT id FROM users WHERE email = $1", [email]);
   if (byEmail.rows[0]) {
     await db.query("UPDATE users SET google_id = $1 WHERE id = $2 AND google_id IS NULL", [
       info.sub,
       byEmail.rows[0].id,
     ]);
-    return byEmail.rows[0].id;
+    return { userId: byEmail.rows[0].id, needsOnboarding: false };
   }
 
+  // Brand-new Google user — create them un-onboarded so /onboarding runs.
   const username = await deriveUniqueUsername(info.name || email.split("@")[0]);
   let userId: string;
   try {
     const inserted = await db.query<{ id: string }>(
-      `INSERT INTO users (email, username, google_id, auth_provider)
-       VALUES ($1, $2, $3, 'google') RETURNING id`,
+      `INSERT INTO users (email, username, google_id, auth_provider, onboarded)
+       VALUES ($1, $2, $3, 'google', false) RETURNING id`,
       [email, username, info.sub],
     );
     userId = inserted.rows[0].id;
   } catch (err) {
     // Lost a race on email/google_id uniqueness — fall back to the now-existing row.
     if (err && typeof err === "object" && "code" in err && err.code === "23505") {
-      const existing = await db.query<{ id: string }>(
-        "SELECT id FROM users WHERE google_id = $1 OR email = $2 LIMIT 1",
+      const existing = await db.query<{ id: string; onboarded: boolean }>(
+        "SELECT id, onboarded FROM users WHERE google_id = $1 OR email = $2 LIMIT 1",
         [info.sub, email],
       );
-      if (existing.rows[0]) return existing.rows[0].id;
+      if (existing.rows[0]) {
+        return { userId: existing.rows[0].id, needsOnboarding: !existing.rows[0].onboarded };
+      }
     }
     throw err;
   }
@@ -204,5 +217,5 @@ export async function findOrCreateGoogleUser(info: GoogleUserInfo): Promise<stri
     [userId],
   );
 
-  return userId;
+  return { userId, needsOnboarding: true };
 }

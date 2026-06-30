@@ -17,6 +17,7 @@ export type SessionUser = {
   mascot: Mascot;
   is_admin: boolean;
   avatarUrl: string | null;
+  onboarded: boolean;
 };
 
 /**
@@ -39,13 +40,19 @@ export async function createSessionToken(
   return { token, expiresAt };
 }
 
-/** Serialize the session cookie as a `Set-Cookie` header value for raw Responses. */
+/**
+ * Serialize the session cookie as a `Set-Cookie` header value for raw Responses
+ * (the OAuth callback). Uses SameSite=Lax — NOT Strict — because the callback is
+ * reached via a cross-site redirect from Google: a Strict cookie would be
+ * withheld on the immediate redirect to /dashboard, bouncing the user back to
+ * /auth. Lax is sent on top-level navigations and still blocks cross-site POST.
+ */
 export function buildSessionSetCookie(token: string, expiresAt: Date, remember = true): string {
   const parts = [
     `${SESSION_COOKIE}=${token}`,
     "Path=/",
     "HttpOnly",
-    "SameSite=Strict",
+    "SameSite=Lax",
   ];
   if (process.env.NODE_ENV === "production") parts.push("Secure");
   // "Remember me" off → session cookie (cleared on browser close); DB row still 7 days.
@@ -81,7 +88,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
 
   const result = await getDb().query<SessionUser>(
     `SELECT users.id, users.email, users.username, users.mascot, users.is_admin,
-            users.avatar_url AS "avatarUrl"
+            users.avatar_url AS "avatarUrl", users.onboarded
      FROM sessions
      JOIN users ON users.id = sessions.user_id
      WHERE sessions.token = $1 AND sessions.expires_at > now()`,

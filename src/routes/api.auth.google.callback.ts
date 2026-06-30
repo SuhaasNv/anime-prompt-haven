@@ -47,10 +47,10 @@ export const Route = createFileRoute("/api/auth/google/callback")({
 
         try {
           const identity = await resolveGoogleIdentity(code, verifier, redirectUriFromRequest(request));
-          const userId = await findOrCreateGoogleUser(identity);
+          const { userId, needsOnboarding } = await findOrCreateGoogleUser(identity);
           const { token, expiresAt } = await createSessionToken(userId);
 
-          const headers = new Headers({ Location: "/dashboard" });
+          const headers = new Headers({ Location: needsOnboarding ? "/onboarding" : "/dashboard" });
           headers.append("Set-Cookie", buildSessionSetCookie(token, expiresAt));
           headers.append("Set-Cookie", buildClearCookie(OAUTH_STATE_COOKIE, isProd));
           headers.append("Set-Cookie", buildClearCookie(OAUTH_VERIFIER_COOKIE, isProd));
